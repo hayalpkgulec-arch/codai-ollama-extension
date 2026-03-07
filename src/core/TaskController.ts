@@ -425,8 +425,7 @@ export class TaskController {
                     }
                 } else {
                     // ── Final yanıt ───────────────────────────────────────────
-                    const rawFinal = response?.message?.content || lastContentSnapshot || '';
-                    const finalContent = LLMService.fixSpacing(rawFinal);
+                    const finalContent = response?.message?.content || lastContentSnapshot || '';
                     this.workspaceManager.appendToHistory({ role: 'assistant', content: finalContent });
                     this.emitTurnEvent(turnRequestId, 'finalResponse', { content: finalContent });
                     await this.workspaceManager.persistState();

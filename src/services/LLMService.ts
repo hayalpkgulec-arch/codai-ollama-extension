@@ -157,40 +157,13 @@ export class LLMService {
 
     private sanitizeText(text: string): string {
         if (!text) return '';
-        let t = text
-            .replace(/<[^>]*(?:place[\s_▁-]*holder|placeholder)[^>]*>/giu, ' ')
-            .replace(/[ \t]+/g, ' ');
-        return t;
+        // Sadece sahte placeholder tag'lerini temizle, başka bir şeye dokunma
+        return text.replace(/<[^>]*(?:place[\s_▁-]*holder|placeholder)[^>]*>/giu, '');
     }
 
-    // Model çıktısındaki boşluk hatalarını düzelt (Unicode-aware)
+    // Artık kullanılmıyor — raw stream text olduğu gibi kullanılıyor
     static fixSpacing(text: string): string {
-        if (!text) return '';
-        let t = text;
-
-        // 1. Noktalama işaretlerinden sonra boşluk yok — Unicode \p{L} ile tüm dilleri yakala
-        // "merhaba.nasılsın" → "merhaba. nasılsın"
-        // "iyiyim,teşekkürederim" → "iyiyim, teşekkürederim"
-        // flags: u = unicode, g = global
-        t = t.replace(/([.!?,;:])(\p{L})/gu, '$1 $2');
-
-        // 2. camelCase sınırları — ASCII için yeterli
-        // "Iwillscan" → "I will scan"
-        t = t.replace(/([a-z])([A-Z])/g, '$1 $2');
-
-        // 3. Sayıdan sonra harf veya harften sonra sayı — boşluk ekle
-        // "3klasör" → "3 klasör", "v2file" → "v2 file"
-        t = t.replace(/(\d)(\p{L})/gu, '$1 $2');
-        t = t.replace(/(\p{L})(\d)/gu, '$1 $2');
-
-        // 4. Emoji'den sonra harf geliyorsa boşluk ekle
-        // "Selam!😊İyiyim" → "Selam!😊 İyiyim"
-        t = t.replace(/([\u{1F300}-\u{1FFFF}])(\p{L})/gu, '$1 $2');
-
-        // 5. Birden fazla boşluk → tek boşluk
-        t = t.replace(/[ \t]{2,}/g, ' ');
-
-        return t;
+        return text;
     }
 
     private extractInlineToolCalls(text: string): { calls: any[]; cleaned: string } {
@@ -238,16 +211,11 @@ export class LLMService {
         onContent?: (content: string) => void,
         abortSignal?: AbortSignal
     ): Promise<any> {
-        // fixSpacing wrapper — her content callback'inde boşluk düzeltmesi yap
-        const wrappedOnContent = onContent
-            ? (text: string) => onContent(LLMService.fixSpacing(text))
-            : undefined;
-
         const def = PROVIDER_DEFS[this.config.providerId];
         if (def.protocol === 'ollama') {
-            return this.chatOllama(model, messages, tools, onThinking, wrappedOnContent, abortSignal);
+            return this.chatOllama(model, messages, tools, onThinking, onContent, abortSignal);
         }
-        return this.chatOpenAI(model, messages, tools, onThinking, wrappedOnContent, abortSignal);
+        return this.chatOpenAI(model, messages, tools, onThinking, onContent, abortSignal);
     }
 
     // ── Ollama protocol ────────────────────────────────────────────────────
