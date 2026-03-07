@@ -217,7 +217,7 @@ export function useHistory() {
   return {
     sessions,
     activeSessionId,
-    setActiveSessionId,
+    setActiveSessionId,   // exposed so App can reset on "New Chat"
     createSession,
     updateSession,
     deleteSession,

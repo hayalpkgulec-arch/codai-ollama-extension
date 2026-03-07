@@ -79,6 +79,7 @@ export default function App() {
   const {
     sessions,
     activeSessionId,
+    setActiveSessionId,
     createSession,
     updateSession,
     deleteSession,
@@ -158,18 +159,14 @@ export default function App() {
     return pending;
   }, [messages, decisions]);
 
-  // ── Last assistant message has visible content? ──────────────────────────
-  // Used to avoid duplicate "..." when thinking/tool segment already visible
+  // ── Last assistant message has ANY segment? ──────────────────────────────
+  // WorkingIndicator must hide if the last assistant msg already has segments,
+  // otherwise we get duplicate "..." (segments render their own loading state)
   const lastMessageHasContent = useMemo(() => {
-    const asstMsgs = messages.filter(m => m.role === 'assistant');
-    if (!asstMsgs.length) return false;
-    const last = asstMsgs[asstMsgs.length - 1];
-    return last.segments.some(s => {
-      if (s.type === 'thinking') return !s.done || (s.text?.length > 0);
-      if (s.type === 'tool') return true;
-      if (s.type === 'content') return s.text?.length > 0;
-      return false;
-    });
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== 'assistant') return false;
+    // ANY segment present → message is already rendering something
+    return last.segments.length > 0;
   }, [messages]);
 
   // ── Decisions ────────────────────────────────────────────────────────────
@@ -231,6 +228,8 @@ export default function App() {
     setPlanSaved(null);
     setPlanReadyCardDismissed(false);
     setTaskStartedAt(undefined);
+    // Reset active session → next message will create a brand new session
+    setActiveSessionId(null);
     vscode.postMessage({ type: 'clearHistory' });
   };
 
@@ -399,7 +398,19 @@ export default function App() {
               loadSession(id);
               setShowHistory(false);
             }}
-            onDeleteSession={(id) => deleteSession(id)}
+            onDeleteSession={(id) => {
+              deleteSession(id);
+              // If deleted session was active — clear UI to empty state
+              if (id === activeSessionId) {
+                clearMessages();
+                setDecisions(new Map());
+                setPlanClosed(false);
+                setPlanSaved(null);
+                setTaskStartedAt(undefined);
+                setActiveSessionId(null);
+                vscode.postMessage({ type: 'clearHistory' });
+              }
+            }}
             onRenameSession={(id, title) => renameSession(id, title)}
             onClose={() => setShowHistory(false)}
           />
