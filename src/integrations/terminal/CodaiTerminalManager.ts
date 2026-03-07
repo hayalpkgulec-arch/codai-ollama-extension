@@ -204,6 +204,15 @@ export function isBgProcessAlive(id: string): boolean {
     return _bgProcesses.has(id);
 }
 
+/** Returns all currently running background processes — used to warn AI before starting new ones */
+export function getRunningBgProcesses(): Array<{ bgId: string; command?: string }> {
+    return Array.from(_bgProcesses.entries()).map(([bgId]) => ({ bgId }));
+}
+
+export function hasRunningBgProcesses(): boolean {
+    return _bgProcesses.size > 0;
+}
+
 export function killBackgroundProcess(id: string): boolean {
     const entry = _bgProcesses.get(id);
     if (!entry) return false;

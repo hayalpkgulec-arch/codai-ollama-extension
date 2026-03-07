@@ -3698,6 +3698,7 @@ button:focus-visible {
     display: flex;
     align-items: center;
     gap: 5px;
+
     padding: 5px 8px;
     cursor: pointer;
     transition: background 0.12s;
@@ -3730,3 +3731,937 @@ button:focus-visible {
     flex-shrink: 0;
 }
 .read-multi-row:hover .read-multi-open { opacity: 0.7; }
+
+/* ══════════════════════════════════════════════════════════════
+   QUESTION WIZARD — Kiro-style step-by-step multi-question UI
+   ══════════════════════════════════════════════════════════════ */
+
+.question-wizard {
+    flex-shrink: 0;
+    background: var(--vscode-sideBar-background, #1f1f1f);
+    border-top: 1px solid rgba(99, 153, 255, 0.22);
+    border-bottom: 1px solid rgba(99, 153, 255, 0.12);
+    animation: slideDown 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+    display: flex;
+    flex-direction: column;
+    max-height: 380px;
+    overflow: hidden;
+}
+
+/* ── Wizard header ── */
+.wizard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+}
+
+.wizard-counter {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--vscode-descriptionForeground, #777);
+    text-transform: uppercase;
+}
+
+.wizard-header-controls {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.wizard-close-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #666);
+    font-size: 14px;
+    line-height: 1;
+    padding: 1px 5px;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.wizard-close-btn:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.07);
+}
+
+/* ── Wizard body ── */
+.wizard-body {
+    padding: 12px 14px 10px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.wizard-question-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--vscode-foreground, #d4d4d4);
+    margin-bottom: 3px;
+    line-height: 1.4;
+}
+
+.wizard-hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #777);
+    margin-bottom: 10px;
+    font-style: italic;
+}
+
+/* ── Options radio list ── */
+.wizard-options {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+.wizard-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.15s;
+    user-select: none;
+}
+
+.wizard-option:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(99, 153, 255, 0.3);
+}
+
+.wizard-option--selected {
+    background: rgba(99, 153, 255, 0.08);
+    border-color: rgba(99, 153, 255, 0.45);
+}
+
+/* Custom radio indicator */
+.wizard-radio {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+    transition: border-color 0.15s;
+}
+
+.wizard-option--selected .wizard-radio {
+    border-color: rgba(99, 153, 255, 0.9);
+}
+
+.wizard-radio-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: transparent;
+    transition: background 0.15s, transform 0.15s;
+}
+
+.wizard-radio-dot--filled {
+    background: rgba(99, 153, 255, 1);
+    transform: scale(1);
+}
+
+.wizard-option-text {
+    font-size: 12.5px;
+    color: var(--vscode-foreground, #d4d4d4);
+    line-height: 1.45;
+    flex: 1;
+}
+
+/* ── Custom text input ── */
+.wizard-custom-wrap {
+    margin-top: 4px;
+}
+
+.wizard-custom-wrap--only {
+    margin-top: 0;
+}
+
+.wizard-custom-input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 7px;
+    color: var(--vscode-foreground, #d4d4d4);
+    font-size: 12.5px;
+    font-family: inherit;
+    padding: 8px 11px;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.wizard-custom-input::placeholder {
+    color: var(--vscode-descriptionForeground, #555);
+}
+
+.wizard-custom-input:focus,
+.wizard-custom-input--active {
+    border-color: rgba(99, 153, 255, 0.5);
+    background: rgba(99, 153, 255, 0.04);
+}
+
+/* ── Wizard footer ── */
+.wizard-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+    gap: 8px;
+}
+
+.wizard-footer-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.wizard-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wizard-dismiss-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #666);
+    font-size: 11.5px;
+    font-family: inherit;
+    padding: 3px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.wizard-dismiss-btn:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.wizard-back-btn {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #777);
+    font-size: 11.5px;
+    font-family: inherit;
+    padding: 3px 8px;
+    border-radius: 5px;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.wizard-back-btn:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* Step progress dots */
+.wizard-dots {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.wizard-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+    transition: background 0.2s, transform 0.2s;
+}
+
+.wizard-dot--active {
+    background: rgba(99, 153, 255, 0.9);
+    transform: scale(1.3);
+}
+
+.wizard-dot--done {
+    background: rgba(78, 201, 145, 0.7);
+}
+
+/* Next / Submit button */
+.wizard-next-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 14px;
+    border-radius: 6px;
+    border: none;
+    background: rgba(99, 153, 255, 0.75);
+    color: #fff;
+    font-size: 12px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.12s, opacity 0.15s;
+    white-space: nowrap;
+}
+
+.wizard-next-btn:hover:not(.wizard-next-btn--disabled) {
+    background: rgba(99, 153, 255, 0.95);
+    transform: scale(1.04);
+}
+
+.wizard-next-btn:active:not(.wizard-next-btn--disabled) {
+    transform: scale(0.97);
+}
+
+.wizard-next-btn--disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    background: rgba(99, 153, 255, 0.35);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PLAN READY CARD — Build / View Plan / Revise
+   ══════════════════════════════════════════════════════════════ */
+
+.plan-ready-card {
+    flex-shrink: 0;
+    padding: 10px 14px 12px;
+    background: linear-gradient(135deg,
+        rgba(78, 201, 145, 0.06) 0%,
+        rgba(79, 156, 222, 0.04) 100%);
+    border-top: 1px solid rgba(78, 201, 145, 0.22);
+    border-bottom: 1px solid rgba(78, 201, 145, 0.12);
+    animation: slideDown 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* ── Top row ── */
+.plan-ready-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.plan-ready-title-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.plan-ready-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: #4ec991;
+    background: rgba(78, 201, 145, 0.12);
+    border: 1px solid rgba(78, 201, 145, 0.25);
+    padding: 1px 7px;
+    border-radius: 20px;
+    flex-shrink: 0;
+}
+
+.plan-ready-elapsed {
+    font-size: 10.5px;
+    color: var(--vscode-descriptionForeground, #666);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+}
+
+.plan-ready-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--vscode-foreground, #d4d4d4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+/* Revise button (top-right) */
+.plan-ready-revise {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--vscode-descriptionForeground, #777);
+    font-size: 11px;
+    font-family: inherit;
+    padding: 3px 9px;
+    border-radius: 5px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.plan-ready-revise:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ── Summary text ── */
+.plan-ready-summary {
+    margin: 0;
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground, #888);
+    line-height: 1.5;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── File path ── */
+.plan-ready-path {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+}
+
+.plan-ready-path-icon {
+    color: var(--vscode-descriptionForeground, #666);
+    flex-shrink: 0;
+}
+
+.plan-ready-path-text {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 10.5px;
+    color: var(--vscode-descriptionForeground, #666);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ── Action buttons row ── */
+.plan-ready-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+}
+
+/* View Plan button */
+.plan-ready-view-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 13px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--vscode-foreground, #d4d4d4);
+    font-size: 12px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.12s;
+    white-space: nowrap;
+}
+
+.plan-ready-view-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: scale(1.03);
+}
+
+.plan-ready-view-btn:active {
+    transform: scale(0.97);
+}
+
+/* Build button */
+.plan-ready-build-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 16px;
+    border-radius: 6px;
+    border: none;
+    background: var(--vscode-button-background, #007acc);
+    color: #fff;
+    font-size: 12px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+    white-space: nowrap;
+    letter-spacing: 0.1px;
+}
+
+.plan-ready-build-btn:hover {
+    background: var(--vscode-button-hoverBackground, #1a86d4);
+    transform: scale(1.04);
+    box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3);
+}
+
+.plan-ready-build-btn:active {
+    transform: scale(0.97);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TASK HEADER — Kilo-style sticky session title bar
+   ══════════════════════════════════════════════════════════════ */
+
+.task-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.12);
+    flex-shrink: 0;
+    min-height: 28px;
+    animation: slideDown 0.18s ease;
+}
+
+.task-header-title {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--vscode-foreground, #d4d4d4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+    opacity: 0.85;
+}
+
+.task-header-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.task-header-elapsed,
+.task-header-count {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #666);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   WORKING INDICATOR — Kilo animated dots + shimmer text
+   ══════════════════════════════════════════════════════════════ */
+
+.working-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 2px 4px;
+    animation: fadeIn 0.3s ease;
+}
+
+.working-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.working-dots span {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--vscode-descriptionForeground, #555);
+    animation: dotBounce 1.4s ease-in-out infinite both;
+}
+
+.working-dots span:nth-child(1) { animation-delay: -0.32s; }
+.working-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+.working-indicator .working-shimmer {
+    font-size: 12px;
+    font-style: italic;
+    letter-spacing: 0.1px;
+    background: linear-gradient(90deg,
+        var(--vscode-descriptionForeground, #777) 0%,
+        var(--vscode-foreground, #c8c8c8) 30%,
+        rgba(255, 255, 255, 0.55) 50%,
+        var(--vscode-foreground, #c8c8c8) 70%,
+        var(--vscode-descriptionForeground, #777) 100%);
+    background-size: 300% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer-slide 2.2s ease-in-out infinite;
+}
+
+/* ── Scroll-to-bottom button ── */
+.scroll-to-bottom-btn {
+    position: absolute;
+    bottom: 120px;
+    right: 12px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: var(--vscode-sideBar-background, #1f1f1f);
+    color: var(--vscode-foreground, #d4d4d4);
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 60;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: background 0.15s, transform 0.12s;
+    animation: fadeIn 0.18s ease;
+}
+
+.scroll-to-bottom-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: scale(1.08);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CHAT HISTORY PANEL — Kilo SessionList style
+   ══════════════════════════════════════════════════════════════ */
+
+.history-overlay {
+    position: absolute;
+    top: 34px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 180;
+    background: var(--vscode-sideBar-background, #1f1f1f);
+    display: flex;
+    flex-direction: column;
+    animation: fadeIn 0.15s ease;
+}
+
+.history-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.history-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.history-panel-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-foreground, #d4d4d4);
+    flex: 1;
+    letter-spacing: 0.2px;
+}
+
+.history-panel-count {
+    font-size: 10px;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--vscode-descriptionForeground, #777);
+    padding: 1px 6px;
+    border-radius: 20px;
+}
+
+.history-panel-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #666);
+    display: flex;
+    align-items: center;
+    padding: 3px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.history-panel-close:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.07);
+}
+
+/* ── Search ── */
+.history-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.history-search-icon {
+    color: var(--vscode-descriptionForeground, #666);
+    flex-shrink: 0;
+}
+
+.history-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--vscode-foreground, #d4d4d4);
+    font-size: 12px;
+    font-family: inherit;
+    padding: 0;
+    min-width: 0;
+}
+
+.history-search-input::placeholder {
+    color: var(--vscode-descriptionForeground, #555);
+    opacity: 0.7;
+}
+
+.history-search-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #666);
+    display: flex;
+    align-items: center;
+    padding: 2px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+
+.history-search-clear:hover { color: var(--vscode-foreground, #d4d4d4); }
+
+/* ── List ── */
+.history-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0 8px;
+}
+
+.history-list::-webkit-scrollbar { width: 3px; }
+.history-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.history-empty {
+    padding: 20px 14px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground, #666);
+    text-align: center;
+    opacity: 0.7;
+}
+
+/* ── Group ── */
+.history-group { margin-bottom: 4px; }
+
+.history-group-label {
+    padding: 5px 12px 3px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground, #666);
+    user-select: none;
+    opacity: 0.75;
+}
+
+/* ── Session item ── */
+.history-item { position: relative; }
+
+.history-item-body {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: calc(100% - 8px);
+    padding: 6px 10px 6px 12px;
+    background: transparent;
+    border: none;
+    color: var(--vscode-foreground, #d4d4d4);
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+    border-radius: 4px;
+    margin: 0 4px;
+}
+
+.history-item-body:hover { background: rgba(255, 255, 255, 0.05); }
+.history-item--active .history-item-body { background: rgba(79, 156, 222, 0.1); }
+
+.history-item-icon {
+    flex-shrink: 0;
+    color: var(--vscode-descriptionForeground, #666);
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+}
+
+.history-item--active .history-item-icon { color: #4f9cde; }
+
+.history-item-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.history-item-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--vscode-foreground, #d4d4d4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.3;
+}
+
+.history-item-preview {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #777);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.8;
+}
+
+.history-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 1px;
+}
+
+.history-item-date,
+.history-item-count {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #555);
+}
+
+.history-item-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+.history-action-btn {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--vscode-descriptionForeground, #666);
+    transition: color 0.15s, background 0.15s;
+}
+
+.history-action-btn:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.history-action-btn--danger:hover {
+    color: #f48771;
+    background: rgba(244, 135, 113, 0.1);
+}
+
+.history-item-rename {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 4px 12px;
+    margin: 0 4px;
+}
+
+.history-item-rename-input {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(79, 156, 222, 0.5);
+    border-radius: 4px;
+    color: var(--vscode-foreground, #d4d4d4);
+    font-size: 12px;
+    font-family: inherit;
+    padding: 3px 7px;
+    outline: none;
+    min-width: 0;
+}
+
+.history-item-rename-actions {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+/* ── Empty state — Recent sessions ── */
+.empty-recent {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 100%;
+    max-width: 260px;
+    margin-top: 12px;
+}
+
+.empty-recent-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--vscode-descriptionForeground, #666);
+    padding: 0 4px;
+    margin-bottom: 2px;
+}
+
+.empty-recent-item {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: background 0.12s, border-color 0.12s;
+    width: 100%;
+}
+
+.empty-recent-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(79, 156, 222, 0.3);
+}
+
+.empty-recent-title {
+    font-size: 12px;
+    color: var(--vscode-foreground, #d4d4d4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -7,7 +7,7 @@ import { WorkspaceManager } from '../services/WorkspaceManager';
 import { PROVIDER_DEFS } from '../services/providers';
 import { globalToolRegistry } from '../tools/index';
 import { buildEnvironmentDetails } from './SystemPrompts';
-import { getCodaiTerminal } from '../integrations/terminal/CodaiTerminalManager';
+import { getCodaiTerminal, hasRunningBgProcesses, getRunningBgProcesses, killBackgroundProcess } from '../integrations/terminal/CodaiTerminalManager';
 
 export class TaskController {
     private _view?: vscode.Webview;
@@ -84,6 +84,48 @@ export class TaskController {
     }
 
     public getLLMKeyCount(): number { return this.llmService.getKeyCount(); }
+
+    // ── Session / History management ─────────────────────────────────────────
+    private readonly SESSION_STATE_KEY = 'codai_sessions_v1';
+
+    public async getSessions(): Promise<any[]> {
+        return this._extensionContext.globalState.get<any[]>(this.SESSION_STATE_KEY) ?? [];
+    }
+
+    public async upsertSessionMeta(session: any): Promise<void> {
+        const sessions = await this.getSessions();
+        const idx = sessions.findIndex(s => s.id === session.id);
+        if (idx >= 0) sessions[idx] = session;
+        else sessions.unshift(session);
+        // Keep max 100
+        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, sessions.slice(0, 100));
+    }
+
+    public async updateSessionMeta(sessionId: string, updates: any): Promise<void> {
+        const sessions = await this.getSessions();
+        const idx = sessions.findIndex(s => s.id === sessionId);
+        if (idx >= 0) {
+            sessions[idx] = { ...sessions[idx], ...updates, updatedAt: new Date().toISOString() };
+            await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, sessions);
+        }
+    }
+
+    public async deleteSession(sessionId: string): Promise<void> {
+        const sessions = await this.getSessions();
+        const filtered = sessions.filter((s: any) => s.id !== sessionId);
+        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, filtered);
+    }
+
+    public async renameSession(sessionId: string, title: string): Promise<void> {
+        await this.updateSessionMeta(sessionId, { title });
+    }
+
+    public async loadSession(sessionId: string): Promise<void> {
+        // For now: history is restored via clearHistory + loading from persistence
+        // In future: multi-session workspace with per-session history
+        if (!this._view) return;
+        this._view.postMessage({ type: 'sessionLoaded', sessionId });
+    }
 
     public postInitialState() {
         if (!this._view) return;
@@ -395,12 +437,15 @@ export class TaskController {
             await this.workspaceManager.persistState();
 
             let continueLoop = true;
-            // Plan modunda daha uzun iterasyon — her adım için ekstra tur gerekebilir
             const isPlanMode = this.workspaceManager.getMode() === 'plan';
-            let maxIterations = isPlanMode ? 40 : 12;
+            // Plan mode: max 6 iterations (explore + ask + write plan = done)
+            // Code mode: 12 iterations
+            let maxIterations = isPlanMode ? 6 : 12;
             let iteration = 0;
             let activePhaseId = `pre-${turnRequestId}`;
-            let taskNotesCalledThisLoop = false;  // plan devam tracking
+            let taskNotesCalledThisLoop = false;
+            // P2 FIX: Detect duplicate task_notes — stop looping if same plan repeated
+            let lastTaskNotesContent = '';
 
                     const MAX_RATE_LIMIT_RETRIES = 4;
 
@@ -519,6 +564,18 @@ export class TaskController {
                             status: 'running', summary, startedAt, toolCallId: toolCall?.id
                         });
 
+                        // P1 FIX: Warn AI if a bg process is already running before starting another
+                        if (toolName === 'run_command' && hasRunningBgProcesses()) {
+                            const running = getRunningBgProcesses();
+                            const names = running.map(p => p.command || p.bgId).join(', ');
+                            // Inject warning into history so AI sees it
+                            this.workspaceManager.appendToHistory({
+                                role: 'tool',
+                                content: `WARNING: There is already a background process running (${names}). Stop it first with killBgProcess before starting a new long-running process. If this is a short command (npm install, tsc, etc.) it is safe to proceed.`,
+                                tool_call_id: toolCall?.id,
+                            });
+                        }
+
                         const result = await globalToolRegistry.executeTool(toolName, toolArgs);
                         const normalizedResult = this.normalizeToolResult(result, toolName, summary, startedAt);
 
@@ -541,12 +598,25 @@ export class TaskController {
                         activePhaseId = toolPhaseId;
 
                         if (toolName === 'task_notes' && typeof toolArgs.todos === 'string') {
+                            // P2 FIX: Duplicate detection — same content = stop loop
+                            const todosContent = toolArgs.todos.trim();
+                            if (todosContent === lastTaskNotesContent) {
+                                // AI is repeating same plan — force stop
+                                continueLoop = false;
+                                this.workspaceManager.appendToHistory({
+                                    role: 'tool',
+                                    content: 'task_notes: Duplicate plan detected. Use attempt_completion to finish.',
+                                    tool_call_id: toolCall?.id,
+                                });
+                                break;
+                            }
+                            lastTaskNotesContent = todosContent;
+
                             this.workspaceManager.updatePlanState(
                                 toolArgs.todos,
                                 typeof toolArgs.summary === 'string' ? toolArgs.summary : ''
                             );
                             taskNotesCalledThisLoop = true;
-                            // Backend-driven todo update — frontend'e gönder
                             this.emitTurnEvent(turnRequestId, 'todoUpdate', {
                                 todos: toolArgs.todos,
                                 summary: toolArgs.summary || ''
@@ -562,7 +632,7 @@ export class TaskController {
                             break;
                         }
 
-                        const STOP_TOOLS = ['ask_followup_question'];
+                        const STOP_TOOLS = ['ask_followup_question', 'ask_followup_questions'];
                         if (STOP_TOOLS.includes(toolName)) {
                             continueLoop = false;
                             break;
@@ -575,27 +645,10 @@ export class TaskController {
                     this.emitTurnEvent(turnRequestId, 'finalResponse', { content: finalContent });
                     await this.workspaceManager.persistState();
 
-                    // Plan modunda: eğer todos'da hâlâ tamamlanmamış adım varsa → devam et
-                    if (isPlanMode) {
-                        const currentTodos = this.workspaceManager.getPlanTodos();
-                        const hasUnfinished = currentTodos
-                            .split('\n')
-                            .some(line => line.trim().startsWith('- [ ]'));
-
-                        if (hasUnfinished && taskNotesCalledThisLoop) {
-                            // Tamamlanmamış adım var — modeli devam ettir
-                            this.workspaceManager.appendToHistory({
-                                role: 'user',
-                                content: 'Continue with the next step in the plan.'
-                            });
-                            taskNotesCalledThisLoop = false;
-                            // continueLoop = true kalır, bir sonraki iterasyona geç
-                        } else {
-                            continueLoop = false;
-                        }
-                    } else {
-                        continueLoop = false;
-                    }
+                    // P2 FIX: Plan mode no longer auto-injects "Continue" messages.
+                    // AI must use attempt_completion to signal plan is done.
+                    // Both plan and code mode: finalResponse = stop.
+                    continueLoop = false;
                 }
             }
 

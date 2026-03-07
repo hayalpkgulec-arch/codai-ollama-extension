@@ -38,23 +38,18 @@ export class TaskNotesTool extends BaseTool {
 }
 
 // ── ask_followup_question ───────────────────────────────────────────────────
-// Model belirsizlikte kullanıcıya soru sorar.
 export class AskFollowupQuestionTool extends BaseTool {
     get definition(): Tool {
         return {
             name: 'ask_followup_question',
-            description: 'Ask the user a clarifying question when you need more information to complete a task. Use this when requirements are ambiguous.',
+            description: 'Ask the user a single clarifying question. In Plan Mode, prefer ask_followup_questions (plural) to ask multiple questions in one wizard UI.',
             parameters: {
                 type: 'object',
                 properties: {
-                    question: {
-                        type: 'string',
-                        description: 'The question to ask the user.'
-                    },
+                    question: { type: 'string', description: 'The question to ask the user.' },
                     options: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description: 'Optional list of suggested answers the user can choose from (max 5).'
+                        type: 'array', items: { type: 'string' },
+                        description: 'Optional suggested answers (max 5).'
                     }
                 },
                 required: ['question']
@@ -64,12 +59,58 @@ export class AskFollowupQuestionTool extends BaseTool {
 
     async execute(args: { question: string; options?: string[] }): Promise<string> {
         if (!args.question?.trim()) return 'Error: question cannot be empty';
-        const options = (args.options || []).slice(0, 5); // cap at 5
-        this.emitToWebview('clarificationRequest', {
-            question: args.question,
-            options
+        const options = (args.options || []).slice(0, 5);
+        // Route through unified wizard UI
+        this.emitToWebview('questionsRequest', {
+            questions: [{ question: args.question, hint: '', options, allowCustom: true }]
         });
         return `Question sent to user: "${args.question}"`;
+    }
+}
+
+// ── ask_followup_questions (plural) ─────────────────────────────────────────
+export class AskFollowupQuestionsTool extends BaseTool {
+    get definition(): Tool {
+        return {
+            name: 'ask_followup_questions',
+            description: `Ask multiple clarifying questions in a step-by-step wizard UI (Kiro-style).
+Use this in Plan Mode FIRST, before exploring or planning.
+Ask 2-4 questions max. Each question shows radio buttons + optional free-text input.
+Call ONCE with ALL questions — do not call multiple times.`,
+            parameters: {
+                type: 'object',
+                properties: {
+                    questions: {
+                        type: 'array',
+                        description: '2-4 questions to ask the user.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                question: { type: 'string', description: 'The question text.' },
+                                hint:     { type: 'string', description: 'Subtitle hint e.g. "(pick one option)"' },
+                                options:  { type: 'array', items: { type: 'string' }, description: '2-5 radio options.' },
+                                allowCustom: { type: 'boolean', description: 'Show "Type your own answer" input. Default: true' }
+                            },
+                            required: ['question']
+                        }
+                    }
+                },
+                required: ['questions']
+            }
+        };
+    }
+
+    async execute(args: { questions: Array<{ question: string; hint?: string; options?: string[]; allowCustom?: boolean }> }): Promise<string> {
+        const questions = (args.questions || []).slice(0, 4).map(q => ({
+            question: (q.question || '').trim(),
+            hint: q.hint || '',
+            options: (q.options || []).slice(0, 5),
+            allowCustom: q.allowCustom !== false,
+        })).filter(q => q.question);
+
+        if (!questions.length) return 'Error: questions array cannot be empty';
+        this.emitToWebview('questionsRequest', { questions });
+        return `Questions sent to user (${questions.length} questions in wizard).`;
     }
 }
 

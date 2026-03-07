@@ -211,6 +211,77 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 }
                 break;
             }
+
+            // ── Chat History: get all sessions ────────────────────────────
+            case 'getSessions': {
+                try {
+                    const sessions = await controller.getSessions();
+                    webview.postMessage({ type: 'sessionsList', sessions });
+                } catch (e: any) {
+                    webview.postMessage({ type: 'sessionsList', sessions: [] });
+                }
+                break;
+            }
+
+            // ── Chat History: load a session ─────────────────────────────
+            case 'loadSession': {
+                if (typeof data.sessionId === 'string' && data.sessionId) {
+                    try {
+                        await controller.loadSession(data.sessionId);
+                    } catch (e: any) {
+                        console.error('CodAI: loadSession error:', e);
+                    }
+                }
+                break;
+            }
+
+            // ── Chat History: delete session ──────────────────────────────
+            case 'deleteSession': {
+                if (typeof data.sessionId === 'string' && data.sessionId) {
+                    try {
+                        await controller.deleteSession(data.sessionId);
+                        webview.postMessage({ type: 'sessionDeleted', sessionId: data.sessionId });
+                    } catch (e: any) {
+                        console.error('CodAI: deleteSession error:', e);
+                    }
+                }
+                break;
+            }
+
+            // ── Chat History: rename session ──────────────────────────────
+            case 'renameSession': {
+                if (typeof data.sessionId === 'string' && typeof data.title === 'string') {
+                    try {
+                        await controller.renameSession(data.sessionId, data.title);
+                        webview.postMessage({
+                            type: 'sessionRenamed',
+                            sessionId: data.sessionId,
+                            title: data.title
+                        });
+                    } catch (e: any) {
+                        console.error('CodAI: renameSession error:', e);
+                    }
+                }
+                break;
+            }
+
+            // ── Chat History: session created/updated (from webview) ──────
+            case 'sessionCreated':
+            case 'sessionUpdated': {
+                // Persist session metadata to globalState
+                if (data.session || data.updates) {
+                    try {
+                        if (data.session) {
+                            await controller.upsertSessionMeta(data.session);
+                        } else if (data.sessionId && data.updates) {
+                            await controller.updateSessionMeta(data.sessionId, data.updates);
+                        }
+                    } catch (e: any) {
+                        console.error('CodAI: sessionMeta error:', e);
+                    }
+                }
+                break;
+            }
         }
     });
 }

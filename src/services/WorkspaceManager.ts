@@ -173,11 +173,12 @@ export class WorkspaceManager {
         if (this.agentMode === 'chat') return []; // no tools in chat mode
 
         if (this.agentMode === 'plan') return [
-            // Read-only exploration (batch tools dahil)
+            // Read-only exploration
             'read_file', 'read_multiple_files', 'list_files', 'list_directory_tree',
             'search_files', 'grep_code', 'get_diagnostics', 'get_file_info', 'web_fetch',
             // Plan-specific interaction
-            'task_notes', 'ask_followup_question', 'attempt_completion',
+            'task_notes', 'ask_followup_questions', 'ask_followup_question',
+            'save_plan', 'attempt_completion',
         ];
 
         // code mode — task_notes hariç tüm tool'lar (batch tool'lar dahil)

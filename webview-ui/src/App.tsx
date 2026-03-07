@@ -1,13 +1,19 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { vscode } from './vscode';
 import { useVSCodeMessage } from './hooks/useVSCodeMessage';
+import { useHistory, generateSessionTitle } from './hooks/useHistory';
 import { AssistantMessage, UserMessage } from './components/chat/ChatComponents';
 import { ModelPicker } from './components/chat/ModelPicker';
 import { ModeSelector, MODES } from './components/chat/ModeSelector';
 import { PlanPanel } from './components/plan/PlanPanel';
+import { QuestionWizard } from './components/plan/QuestionWizard';
+import { PlanReadyCard } from './components/plan/PlanReadyCard';
+import { ChatHistoryPanel } from './components/history/ChatHistoryPanel';
+import { TaskHeader } from './components/chat/TaskHeader';
+import { WorkingIndicator, ScrollToBottomButton } from './components/chat/WorkingIndicator';
 import { ProviderSettings } from './components/settings/ProviderSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
-import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, Bot, Terminal, GitCompare } from 'lucide-react';
+import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare, Bot } from 'lucide-react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
 
@@ -34,6 +40,8 @@ export default function App() {
     mode, setMode,
     todoItems,
     pendingQuestion, setPendingQuestion,
+    pendingQuestions, setPendingQuestions,
+    planSaved, setPlanSaved,
     taskDone, setTaskDone,
     isStreaming,
     initialModel,
@@ -57,6 +65,27 @@ export default function App() {
   // KEY STATE PARENT'TA — unmount edilince kaybolmaması için
   const [settingsApiKey, setSettingsApiKey] = useState('');
   const [settingsBaseUrl, setSettingsBaseUrl] = useState('');
+  // Plan timing — for elapsed display on PlanReadyCard
+  const [planStartedAt] = useState<number>(() => Date.now());
+  const [planReadyCardDismissed, setPlanReadyCardDismissed] = useState(false);
+  // History panel
+  const [showHistory, setShowHistory] = useState(false);
+  // Task start time for TaskHeader elapsed
+  const [taskStartedAt, setTaskStartedAt] = useState<number | undefined>(undefined);
+  // Scroll-to-bottom
+  const [userScrolled, setUserScrolled] = useState(false);
+
+  // ── History ────────────────────────────────────────────────────────────────
+  const {
+    sessions,
+    activeSessionId,
+    createSession,
+    updateSession,
+    deleteSession,
+    renameSession,
+    loadSession,
+    getGroupedSessions,
+  } = useHistory();
 
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -109,19 +138,7 @@ export default function App() {
     return pending;
   }, [messages, decisions]);
 
-  // ── Working shimmer ──────────────────────────────────────────────────────
-  const showWorkingShimmer = useMemo(() => {
-    if (!isProcessing || isStreaming) return false;
-    const asstMsgs = messages.filter(m => m.role === 'assistant');
-    if (!asstMsgs.length) return true;
-    const last = asstMsgs[asstMsgs.length - 1];
-    if (!last.segments.length) return false;
-    return last.segments.every(s => {
-      if (s.type === 'thinking') return s.done;
-      if (s.type === 'tool') return s.tool.status !== 'running';
-      return true;
-    });
-  }, [isProcessing, isStreaming, messages]);
+  // showWorkingShimmer removed — replaced by WorkingIndicator component
 
   // ── Decisions ────────────────────────────────────────────────────────────
   const onDecide = useCallback((phaseId: string, decision: 'accepted' | 'rejected', proposalId: string) => {
@@ -142,10 +159,25 @@ export default function App() {
       finalMessage = ctx + finalMessage;
       setActiveFileContext(null);
     }
+    // ── Session tracking ────────────────────────────────────────────────────
+    const now = Date.now();
+    setTaskStartedAt(now);
+    const userText = finalMessage;
+    const title = generateSessionTitle(userText);
+    // Create session on first message, update on subsequent
+    if (!activeSessionId) {
+      createSession({ title, mode: selectedMode.id as any, model: model.id, preview: userText.slice(0, 80) });
+    } else {
+      updateSession(activeSessionId, {
+        messageCount: messages.length + 1,
+        preview: userText.slice(0, 80),
+        title: messages.length === 0 ? title : undefined,
+      });
+    }
     vscode.postMessage({ type: 'sendMessage', message: finalMessage });
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-  }, [input, isProcessing, activeFileContext, setActiveFileContext]);
+  }, [input, isProcessing, activeFileContext, setActiveFileContext, activeSessionId, createSession, updateSession, messages.length, selectedMode.id, model.id]);
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
@@ -164,6 +196,9 @@ export default function App() {
     setDecisions(new Map());
     setPlanClosed(false);
     setActiveFileContext(null);
+    setPlanSaved(null);
+    setPlanReadyCardDismissed(false);
+    setTaskStartedAt(undefined);
     vscode.postMessage({ type: 'clearHistory' });
   };
 
@@ -201,6 +236,56 @@ export default function App() {
 
   const handleClosePlan = useCallback(() => setPlanClosed(true), []);
   const showPlanPanel = !!todoItems && !planClosed;
+
+  // ── Plan wizard answer submit ────────────────────────────────────────────
+  const handleWizardSubmit = useCallback((answers: string[]) => {
+    setPendingQuestions(null);
+    // Build a formatted message from all answers
+    const formatted = answers
+      .map((ans, i) => {
+        const q = (pendingQuestions || [])[i];
+        return q ? `**${q.question}**\n${ans}` : ans;
+      })
+      .join('\n\n');
+    vscode.postMessage({ type: 'sendMessage', message: formatted });
+  }, [pendingQuestions, setPendingQuestions]);
+
+  const handleWizardDismiss = useCallback(() => {
+    setPendingQuestions(null);
+  }, [setPendingQuestions]);
+
+  // ── PlanReadyCard actions ────────────────────────────────────────────────
+  const handleBuild = useCallback(() => {
+    setPlanReadyCardDismissed(true);
+    const codeMode = MODES.find(m => m.id === 'code')!;
+    handleModeChange(codeMode);
+    const tasksPath = planSaved?.files?.tasks || '';
+    setTimeout(() => {
+      vscode.postMessage({
+        type: 'sendMessage',
+        message: tasksPath
+          ? `Implement the plan. Tasks file: ${tasksPath}\n\nExecute all tasks in order from the tasks.md file.`
+          : 'Implement the plan — execute all tasks from the spec.',
+      });
+    }, 120);
+  }, [planSaved, handleModeChange]);
+
+  const handleViewPlan = useCallback(() => {
+    if (planSaved?.files?.tasks) {
+      vscode.postMessage({ type: 'openFile', path: planSaved.files.tasks });
+    }
+  }, [planSaved]);
+
+  const handleRevise = useCallback(() => {
+    setPlanReadyCardDismissed(true);
+    vscode.postMessage({
+      type: 'sendMessage',
+      message: 'Revise the plan based on additional requirements or corrections.',
+    });
+  }, []);
+
+  // Show PlanReadyCard when both taskDone + planSaved arrived and user hasn't dismissed
+  const showPlanReadyCard = !!(taskDone && planSaved && !planReadyCardDismissed && mode === 'plan');
 
   // ── BUG 13 FIX: Retry — son kullanıcı mesajını tekrar gönder ────────────
   const handleRetry = useCallback(() => {
@@ -272,6 +357,23 @@ export default function App() {
         />
       </div>
 
+      {/* ── Chat History Panel overlay ── */}
+      {showHistory && (
+        <div className="history-overlay">
+          <ChatHistoryPanel
+            groups={getGroupedSessions()}
+            activeSessionId={activeSessionId}
+            onSelectSession={(id) => {
+              loadSession(id);
+              setShowHistory(false);
+            }}
+            onDeleteSession={(id) => deleteSession(id)}
+            onRenameSession={(id, title) => renameSession(id, title)}
+            onClose={() => setShowHistory(false)}
+          />
+        </div>
+      )}
+
       {/* ── Panel header ── */}
       <div className="panel-header">
         <span className="panel-brand">
@@ -279,6 +381,13 @@ export default function App() {
           <span>CodAI</span>
         </span>
         <div className="panel-header-right">
+          <button
+            className={`panel-header-btn${showHistory ? ' active' : ''}`}
+            onClick={() => setShowHistory(s => !s)}
+            title="Chat history"
+          >
+            <History size={11} />
+          </button>
           <button
             className={`panel-header-btn${showSettings ? ' active' : ''}`}
             onClick={() => setShowSettings(s => !s)}
@@ -289,6 +398,16 @@ export default function App() {
           <button className="panel-header-btn" onClick={handleClear} title="New chat">New chat</button>
         </div>
       </div>
+
+      {/* ── Task Header (session title + elapsed) ── */}
+      {!isEmpty && (
+        <TaskHeader
+          title={sessions.find(s => s.id === activeSessionId)?.title}
+          startedAt={taskStartedAt}
+          isProcessing={isProcessing}
+          messageCount={messages.length}
+        />
+      )}
 
       {/* ── Plan Panel ── */}
       {showPlanPanel && (
@@ -302,8 +421,17 @@ export default function App() {
         />
       )}
 
-      {/* ── Clarification ── */}
-      {pendingQuestion && (
+      {/* ── Question Wizard (replaces old clarification-bar) ── */}
+      {pendingQuestions && pendingQuestions.length > 0 && (
+        <QuestionWizard
+          questions={pendingQuestions}
+          onSubmit={handleWizardSubmit}
+          onDismiss={handleWizardDismiss}
+        />
+      )}
+
+      {/* ── Fallback: single clarification bar (non-wizard path) ── */}
+      {!pendingQuestions && pendingQuestion && (
         <div className="clarification-bar">
           <div className="clarification-question">{pendingQuestion.question}</div>
           {pendingQuestion.options && pendingQuestion.options.length > 0 && (
@@ -321,8 +449,20 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Task complete banner ── */}
-      {taskDone && (
+      {/* ── Plan Ready Card (plan mode — taskDone + planSaved) ── */}
+      {showPlanReadyCard && planSaved && (
+        <PlanReadyCard
+          planSaved={planSaved}
+          elapsedSeconds={planStartedAt ? (Date.now() - planStartedAt) / 1000 : undefined}
+          taskResult={taskDone || undefined}
+          onBuild={handleBuild}
+          onViewPlan={handleViewPlan}
+          onRevise={handleRevise}
+        />
+      )}
+
+      {/* ── Task complete banner (code/chat mode only) ── */}
+      {taskDone && !showPlanReadyCard && (
         <div className="task-done-bar">
           <CheckCheck size={13} />
           <span>{taskDone}</span>
@@ -341,7 +481,14 @@ export default function App() {
       )}
 
       {/* ── Chat Scroll ── */}
-      <div className="chat-scroll">
+      <div
+        className="chat-scroll"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          setUserScrolled(!atBottom);
+        }}
+      >
         {isEmpty ? (
           <div className="empty-state">
             <div className="empty-logo">
@@ -349,6 +496,21 @@ export default function App() {
             </div>
             <p className="empty-title">How can I help?</p>
             <p className="empty-sub">Ask anything · <span className="empty-mode-hint">{selectedMode.label} mode</span></p>
+            {/* Recent sessions on empty state — Kilo style */}
+            {sessions.length > 0 && (
+              <div className="empty-recent">
+                <span className="empty-recent-label">Recent</span>
+                {sessions.slice(0, 3).map(s => (
+                  <button
+                    key={s.id}
+                    className="empty-recent-item"
+                    onClick={() => { loadSession(s.id); }}
+                  >
+                    <span className="empty-recent-title">{s.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="msg-list">
@@ -369,17 +531,26 @@ export default function App() {
               </div>
             ))}
 
-            {/* Working shimmer */}
-            {showWorkingShimmer && (
-              <div className="working-shimmer-row">
-                <span className="working-shimmer">Working…</span>
-              </div>
-            )}
+            {/* Kilo-style WorkingIndicator */}
+            <WorkingIndicator
+              isProcessing={isProcessing}
+              isStreaming={isStreaming}
+              iterationCount={iterationCount}
+            />
 
             <div ref={endRef} />
           </div>
         )}
       </div>
+
+      {/* Scroll to bottom button */}
+      <ScrollToBottomButton
+        visible={userScrolled && !isEmpty}
+        onClick={() => {
+          endRef.current?.scrollIntoView({ behavior: 'smooth' });
+          setUserScrolled(false);
+        }}
+      />
 
       {/* ── Proposal bar ── */}
       {pendingProposals.length > 0 && (

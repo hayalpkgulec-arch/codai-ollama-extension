@@ -4,7 +4,7 @@ import { WriteFileTool } from './impl/WriteFileTool';
 import { RunCommandTool } from './impl/RunCommandTool';
 import { ListFilesTool, SearchFilesTool, DeleteFileTool, RenameFileTool } from './impl/FileSystemTools';
 import { GetDiagnosticsTool } from './impl/ProjectTools';
-import { TaskNotesTool, AskFollowupQuestionTool, AttemptCompletionTool } from './impl/InteractionTools';
+import { TaskNotesTool, AskFollowupQuestionTool, AskFollowupQuestionsTool, AttemptCompletionTool } from './impl/InteractionTools';
 import {
     WebFetchTool,
     GrepCodeTool,
@@ -15,6 +15,7 @@ import {
 } from './impl/PowerTools';
 import { ReadMultipleFilesTool, ListDirectoryTreeTool } from './impl/ReadMultipleFilesTool';
 import { WriteMultipleFilesTool, DeleteMultipleFilesTool } from './impl/BatchFileTools';
+import { SavePlanTool } from './impl/SavePlanTool';
 
 // ── Core file tools ──────────────────────────────────────────────────────────
 globalToolRegistry.registerTool(new ReadFileTool());
@@ -45,6 +46,8 @@ globalToolRegistry.registerTool(new GetDiagnosticsTool());
 // ── Interaction / agent tools ────────────────────────────────────────────────
 globalToolRegistry.registerTool(new TaskNotesTool());
 globalToolRegistry.registerTool(new AskFollowupQuestionTool());
+globalToolRegistry.registerTool(new AskFollowupQuestionsTool());
 globalToolRegistry.registerTool(new AttemptCompletionTool());
+globalToolRegistry.registerTool(new SavePlanTool());
 
 export { globalToolRegistry };

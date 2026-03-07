@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { ChatMessage, Segment, ToolCall, AgentMode } from '../types';
+import type { ChatMessage, Segment, ToolCall, AgentMode, WizardQuestion, PlanSavedPayload } from '../types';
 import { vscode } from '../vscode';
 
 // ── Immutable last-element update ────────────────────────────────────────────
@@ -134,6 +134,8 @@ export function useVSCodeMessage() {
   const [mode, setMode] = useState<AgentMode>('code');
   const [todoItems, setTodoItems] = useState<string>('');
   const [pendingQuestion, setPendingQuestion] = useState<{ question: string; options?: string[] } | null>(null);
+  const [pendingQuestions, setPendingQuestions] = useState<WizardQuestion[] | null>(null);
+  const [planSaved, setPlanSaved] = useState<PlanSavedPayload | null>(null);
   const [taskDone, setTaskDone] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   // BUG 8 FIX: initialModel backend'den restore edilir
@@ -191,6 +193,7 @@ export function useVSCodeMessage() {
           setIsStreaming(false);
           setTaskDone(null);
           setPendingQuestion(null);
+          setPendingQuestions(null);
           setIterationCount(0);
           setMessages(prev => [
             ...prev,
@@ -446,6 +449,8 @@ export function useVSCodeMessage() {
           clearMessages();
           setTodoItems('');
           setPendingQuestion(null);
+          setPendingQuestions(null);
+          setPlanSaved(null);
           setTaskDone(null);
           setIterationCount(0);
           break;
@@ -457,6 +462,27 @@ export function useVSCodeMessage() {
 
         case 'clarificationRequest':
           setPendingQuestion({ question: msg.question, options: msg.options });
+          break;
+
+        // ── Wizard multi-question (ask_followup_questions / ask_followup_question) ──
+        case 'questionsRequest':
+          setPendingQuestions(Array.isArray(msg.questions) ? msg.questions : null);
+          // Also clear old single-question state
+          setPendingQuestion(null);
+          break;
+
+        // ── Plan spec saved (save_plan tool) ────────────────────────────────
+        case 'planSaved':
+          setPlanSaved({
+            title: msg.title || '',
+            slug: msg.slug || '',
+            planDir: msg.planDir || '',
+            files: {
+              requirements: msg.files?.requirements || '',
+              design: msg.files?.design || '',
+              tasks: msg.files?.tasks || '',
+            },
+          });
           break;
 
         case 'taskComplete':
@@ -520,6 +546,8 @@ export function useVSCodeMessage() {
     mode, setMode,
     todoItems, setTodoItems,
     pendingQuestion, setPendingQuestion,
+    pendingQuestions, setPendingQuestions,
+    planSaved, setPlanSaved,
     taskDone, setTaskDone,
     isStreaming,
     initialModel,

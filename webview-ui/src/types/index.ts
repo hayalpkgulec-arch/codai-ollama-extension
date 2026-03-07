@@ -1,5 +1,37 @@
 export type AgentMode = 'code' | 'plan' | 'chat';
 
+// ── Chat History ──────────────────────────────────────────────────────────────
+export interface SessionInfo {
+  id: string;
+  title: string;
+  createdAt: string;  // ISO
+  updatedAt: string;  // ISO
+  messageCount: number;
+  mode: AgentMode;
+  model?: string;
+  preview?: string;   // first user message snippet
+}
+
+// ── Plan Mode — Wizard question ───────────────────────────────────────────────
+export interface WizardQuestion {
+  question: string;
+  hint?: string;
+  options?: string[];
+  allowCustom?: boolean;
+}
+
+// ── Plan Mode — Saved spec payload ───────────────────────────────────────────
+export interface PlanSavedPayload {
+  title: string;
+  slug: string;
+  planDir: string;
+  files: {
+    requirements: string;
+    design: string;
+    tasks: string;
+  };
+}
+
 export type ToolStatus = 'running' | 'done' | 'error';
 
 
