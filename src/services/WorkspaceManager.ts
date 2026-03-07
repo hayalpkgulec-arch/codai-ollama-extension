@@ -49,7 +49,8 @@ export class WorkspaceManager {
     }
 
     private getEffectiveSystemPrompt(): string {
-        return getModeSystemPrompt(this.agentMode, this.indexedProjectContext || undefined);
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        return getModeSystemPrompt(this.agentMode, this.indexedProjectContext || undefined, cwd);
     }
 
     public syncSystemMessage() {
@@ -240,5 +241,47 @@ export class WorkspaceManager {
 
     public appendToHistory(message: Message) {
         this.conversationHistory.push(message);
+        // T14 FIX: Context window koruması — geçmişi trim et
+        this.trimHistory();
+    }
+
+    /**
+     * Context window overflow protection.
+     * Rough estimate: 1 token ≈ 4 chars. Most models: 32k–128k tokens.
+     * We target a safe 80k token budget (320k chars).
+     * Strategy: system message always kept; oldest non-system messages dropped first.
+     */
+    private trimHistory(): void {
+        const MAX_HISTORY_CHARS = 320_000; // ~80k tokens
+        const MIN_MESSAGES_TO_KEEP = 6;     // En az son N mesaj kalır
+
+        let totalChars = 0;
+        for (const m of this.conversationHistory) {
+            totalChars += (m.content || '').length;
+            if (Array.isArray((m as any).tool_calls)) {
+                totalChars += JSON.stringify((m as any).tool_calls).length;
+            }
+        }
+
+        if (totalChars <= MAX_HISTORY_CHARS) return;
+
+        // system mesajını koru, geriden itibaren sil
+        const systemMsg = this.conversationHistory[0]?.role === 'system'
+            ? this.conversationHistory[0] : null;
+
+        let nonSystem = systemMsg
+            ? this.conversationHistory.slice(1)
+            : [...this.conversationHistory];
+
+        // En eskilerden sil, MIN_MESSAGES_TO_KEEP kadar bırak
+        while (nonSystem.length > MIN_MESSAGES_TO_KEEP) {
+            const removed = nonSystem.shift()!;
+            totalChars -= (removed.content || '').length;
+            if (totalChars <= MAX_HISTORY_CHARS) break;
+        }
+
+        this.conversationHistory = systemMsg
+            ? [systemMsg, ...nonSystem]
+            : nonSystem;
     }
 }

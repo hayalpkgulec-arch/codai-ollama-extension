@@ -89,12 +89,53 @@ const CHAT_PROMPT = `You are CodAI in CHAT MODE, a knowledgeable AI programming 
 - Be helpful, friendly, and precise.
 - If the user wants to build or modify files, tell them to switch to Code mode.`;
 
-export function getModeSystemPrompt(mode: AgentMode, indexedContext?: string): string {
+/**
+ * Build environment context block injected into every system prompt.
+ * Tells AI: current OS, shell, workspace path, time.
+ */
+function buildEnvironmentBlock(cwd?: string): string {
+    const isWin = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+    const platform = isWin ? 'Windows' : isMac ? 'macOS' : 'Linux';
+    const shell = isWin ? 'PowerShell (default on Windows VS Code)' : (process.env.SHELL || '/bin/bash');
+    const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const lines = [
+        `## Environment`,
+        `- OS: ${platform}`,
+        `- Shell: ${shell}`,
+        cwd ? `- Workspace: ${cwd}` : null,
+        `- Time: ${now}`,
+        '',
+    ];
+    if (isWin) {
+        lines.push(
+            `## CRITICAL: Windows Shell Rules`,
+            `- You are running on **Windows PowerShell**. Unix-only commands WILL FAIL.`,
+            `- Do NOT use: \`ls\`, \`cat\`, \`rm\`, \`cp\`, \`mv\`, \`grep\`, \`touch\`, \`chmod\`, \`mkdir -p\``,
+            `- Instead use: \`dir\`, \`type\`, \`del\`, \`copy\`, \`move\`, \`findstr\`, \`echo $null >\`, \`New-Item\``,
+            `- OR better: use cross-platform npm scripts or Node.js APIs via write_file/run_command.`,
+            `- Do NOT chain commands with \`&&\` in PowerShell — use separate run_command calls.`,
+            '',
+        );
+    }
+    lines.push(
+        `## Terminal / run_command Rules`,
+        `- The workspace root is already the working directory. Do NOT prepend \`cd <workspace>\` to commands.`,
+        `- If you need to run in a subdirectory, use: \`cd subdir && command\` (Linux/Mac) or separate run_command calls (Windows).`,
+        `- Dev servers (npm run dev, vite, nodemon, etc.) are auto-detected as background — they return immediately. Do NOT set background:true.`,
+        `- After starting a dev server, continue with other tasks. Do not wait for it to stop.`,
+        '',
+    );
+    return lines.filter(l => l !== null).join('\n');
+}
+
+export function getModeSystemPrompt(mode: AgentMode, indexedContext?: string, cwd?: string): string {
     const base = mode === 'plan' ? PLAN_PROMPT
         : mode === 'chat' ? CHAT_PROMPT
             : CODE_PROMPT;
-    if (!indexedContext) return base;
-    return `${base}\n\n## Project Context\n${indexedContext}`;
+    const env = buildEnvironmentBlock(cwd);
+    const ctx = indexedContext ? `\n\n## Project Context\n${indexedContext}` : '';
+    return `${base}\n\n${env}${ctx}`;
 }
 
 // Legacy compat

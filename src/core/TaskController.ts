@@ -223,6 +223,57 @@ export class TaskController {
             || normalizedToolName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
 
+    /**
+     * Compact tool result for history — prevents context window overflow.
+     * run_command: stdout+stderr truncated to 8000 chars total
+     * write_file / large results: strip binary/preview data before storing
+     */
+    private compactToolResult(rawResult: string, toolName: string): string {
+        const MAX_RESULT = 8000;
+        if (!rawResult || typeof rawResult !== 'string') return String(rawResult ?? '');
+
+        // run_command: strip large stdout from history, keep summary + exit code
+        if (rawResult.trim().startsWith('{')) {
+            try {
+                const p = JSON.parse(rawResult);
+                if (p.__tool === 'run_command') {
+                    const combined = [p.stdout, p.stderr].filter(Boolean).join('\n').trimEnd();
+                    const truncated = combined.length > MAX_RESULT
+                        ? combined.slice(0, MAX_RESULT) + `\n...[${combined.length - MAX_RESULT} chars truncated]`
+                        : combined;
+                    return JSON.stringify({
+                        __tool: 'run_command',
+                        status: p.status,
+                        command: p.command,
+                        output: truncated,
+                        exitCode: p.exitCode,
+                        background: p.background,
+                        timedOut: p.timedOut,
+                    });
+                }
+                // write_file: strip hunks/preview from history (they're shown in UI)
+                if (p.__tool === 'write_file' || p.__tool === 'write_multiple_files') {
+                    return JSON.stringify({
+                        __tool: p.__tool,
+                        status: p.status,
+                        summary: p.summary,
+                        path: p.path,
+                        mode: p.mode,
+                        addedCount: p.addedCount,
+                        removedCount: p.removedCount,
+                        errorMessage: p.errorMessage,
+                    });
+                }
+            } catch { /* fallthrough */ }
+        }
+
+        // Generic: hard cap
+        if (rawResult.length > MAX_RESULT) {
+            return rawResult.slice(0, MAX_RESULT) + `\n...[${rawResult.length - MAX_RESULT} chars truncated]`;
+        }
+        return rawResult;
+    }
+
     private normalizeToolResult(rawResult: string, toolName: string, summary: string, startedAt: number) {
         const finishedAt = Date.now();
         const base = { toolName, status: 'success' as 'success' | 'error', summary, rawResult, startedAt, finishedAt };
@@ -272,6 +323,12 @@ export class TaskController {
         const turnRequestId = requestId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         this.turnSequenceByRequestId.set(turnRequestId, 0);
 
+        // T12 FIX: Her yeni görevden önce önceki abort controller'ı temizle
+        // Önceki task abort edilmişse yeni AbortController fresh olmalı
+        if (this.activeAbortController) {
+            this.activeAbortController.abort();
+            this.activeAbortController = undefined;
+        }
         this.activeAbortController = new AbortController();
 
         try {
@@ -408,10 +465,12 @@ export class TaskController {
                         const result = await globalToolRegistry.executeTool(toolName, toolArgs);
                         const normalizedResult = this.normalizeToolResult(result, toolName, summary, startedAt);
 
+                        // Tool result history'e compact olarak gönder
+                        // run_command için stdout/stderr'i truncate et — context window'u korur
+                        const historyContent = this.compactToolResult(result, toolName);
                         this.workspaceManager.appendToHistory({
                             role: 'tool',
-                            content: typeof result === 'string' && result.length > 3000
-                                ? `${result.slice(0, 3000)}\n...[truncated]` : result,
+                            content: historyContent,
                             tool_call_id: toolCall?.id
                         });
                         await this.workspaceManager.persistState();
