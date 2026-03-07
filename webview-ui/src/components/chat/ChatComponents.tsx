@@ -7,7 +7,7 @@ import {
   FileEdit, FileSearch, AlertCircle, CheckCheck,
   XCircle, ChevronsUpDown, Copy, Folder, Trash2,
   Move, Search, Stethoscope, Globe, Code2,
-  FolderPlus, Info, Replace, RefreshCw, Files, FolderTree,
+  FolderPlus, Info, Replace, RefreshCw, Files, FolderTree, Layers,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -476,6 +476,86 @@ const ListDirectoryTreeCard = memo(({ tool }: { tool: ToolCall }) => {
 });
 ListDirectoryTreeCard.displayName = 'ListDirectoryTreeCard';
 
+// ─── BatchOperationsCard — write_multiple_files / delete_multiple_files ──────
+const BatchOperationsCard = memo(({ tool }: { tool: ToolCall }) => {
+  const [open, setOpen] = useState(false);
+  const isWrite  = tool.name === 'write_multiple_files';
+  const isDelete = tool.name === 'delete_multiple_files';
+
+  // Parse result
+  let parsed: any = null;
+  try { if (tool.result?.trim().startsWith('{')) parsed = JSON.parse(tool.result); } catch { /* */ }
+
+  // File list — from args (running) or parsed result (done)
+  const files: Array<{ path: string; status?: string; mode?: string; addedCount?: number; removedCount?: number; error?: string }> =
+    tool.status === 'running'
+      ? (isWrite
+          ? (Array.isArray(tool.args?.files) ? tool.args.files : [])
+          : (Array.isArray(tool.args?.paths) ? (tool.args.paths as string[]).map((p: string) => ({ path: p })) : []))
+      : (Array.isArray(parsed?.results) ? parsed.results : []);
+
+  const dur = tool.startedAt && tool.finishedAt ? tool.finishedAt - tool.startedAt : null;
+  const count = files.length || (isWrite ? tool.args?.files?.length : tool.args?.paths?.length) || 0;
+  const successCount = parsed?.successCount ?? (tool.status === 'running' ? 0 : count);
+  const errorCount   = parsed?.errorCount ?? 0;
+
+  const icon = isDelete ? <Trash2 size={11} /> : <Layers size={11} />;
+  const verb = isDelete ? 'Delete' : (tool.status === 'running' ? 'Writing' : 'Write');
+  const headerLabel = count > 0 ? `${verb} ${count} file${count !== 1 ? 's' : ''}` : tool.summary;
+  const meta = tool.status !== 'running'
+    ? (errorCount > 0 ? `${successCount} ok · ${errorCount} failed` : `${successCount} done`)
+    : undefined;
+
+  return (
+    <div className="batch-ops-card">
+      {/* Header row — always visible */}
+      <div className="batch-ops-header" onClick={() => files.length > 0 && setOpen(o => !o)}>
+        <StatusDot status={tool.status} />
+        <span className="batch-ops-icon">{icon}</span>
+        <span className="batch-ops-label">
+          {tool.status === 'running'
+            ? <TypewriterText text={headerLabel} speed={18} />
+            : headerLabel}
+        </span>
+        {meta && <span className="batch-ops-meta">{meta}</span>}
+        {dur != null && <span className="batch-ops-dur">{fmtDur(dur)}</span>}
+        {files.length > 0 && (
+          <ChevronDown size={10} className={`batch-ops-chevron${open ? ' open' : ''}`} />
+        )}
+      </div>
+
+      {/* Collapsible file list */}
+      {open && files.length > 0 && (
+        <div className="batch-ops-list">
+          {files.map((f, i) => {
+            const fname = f.path ? f.path.split(/[/\\]/).pop() || f.path : `file ${i + 1}`;
+            const isErr = f.status === 'error';
+            const diffInfo = (f.addedCount != null || f.removedCount != null)
+              ? <span className="batch-ops-diff">
+                  {f.addedCount != null && <span className="batch-diff-add">+{f.addedCount}</span>}
+                  {f.removedCount != null && <span className="batch-diff-rem">−{f.removedCount}</span>}
+                </span>
+              : null;
+            return (
+              <div key={i} className={`batch-ops-row${isErr ? ' error' : ''}`}>
+                {isDelete
+                  ? <Trash2 size={9} className="batch-row-icon" />
+                  : f.mode === 'editing'
+                    ? <FileEdit size={9} className="batch-row-icon" />
+                    : <FileEdit size={9} className="batch-row-icon create" />}
+                <span className="batch-row-path" title={f.path}>{fname}</span>
+                {diffInfo}
+                {isErr && <span className="batch-row-err" title={f.error}>failed</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+});
+BatchOperationsCard.displayName = 'BatchOperationsCard';
+
 // ─── ToolCard Router ──────────────────────────────────────────────────────────
 interface ToolCardProps {
   tool: ToolCall;
@@ -497,6 +577,7 @@ export const ToolCard = memo(({ tool, decision, onDecide }: ToolCardProps) => {
   if (['list_files', 'list_dir', 'browse'].includes(n)) return <ListFilesCard tool={tool} />;
   if (n === 'list_directory_tree') return <ListDirectoryTreeCard tool={tool} />;
   if (n === 'read_multiple_files') return <ReadMultipleFilesCard tool={tool} />;
+  if (n === 'write_multiple_files' || n === 'delete_multiple_files') return <BatchOperationsCard tool={tool} />;
   if (['search_files', 'grep', 'search'].includes(n)) return <SearchFilesCard tool={tool} />;
   if (['rename_file', 'move_file'].includes(n)) return <RenameFileCard tool={tool} />;
   if (['get_diagnostics', 'diagnose'].includes(n)) return <DiagnosticsCard tool={tool} />;

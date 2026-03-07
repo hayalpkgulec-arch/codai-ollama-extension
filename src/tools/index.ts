@@ -14,6 +14,7 @@ import {
     AppendToFileTool,
 } from './impl/PowerTools';
 import { ReadMultipleFilesTool, ListDirectoryTreeTool } from './impl/ReadMultipleFilesTool';
+import { WriteMultipleFilesTool, DeleteMultipleFilesTool } from './impl/BatchFileTools';
 
 // ── Core file tools ──────────────────────────────────────────────────────────
 globalToolRegistry.registerTool(new ReadFileTool());
@@ -25,8 +26,10 @@ globalToolRegistry.registerTool(new DeleteFileTool());
 globalToolRegistry.registerTool(new RenameFileTool());
 
 // ── Batch tools — rate limit'i azaltır ───────────────────────────────────────
-globalToolRegistry.registerTool(new ReadMultipleFilesTool());  // N dosyayı tek çağrıda oku
-globalToolRegistry.registerTool(new ListDirectoryTreeTool());  // recursive dizin listesi
+globalToolRegistry.registerTool(new ReadMultipleFilesTool());    // N dosyayı tek çağrıda oku
+globalToolRegistry.registerTool(new ListDirectoryTreeTool());    // recursive dizin listesi
+globalToolRegistry.registerTool(new WriteMultipleFilesTool());   // N dosyayı tek çağrıda yaz
+globalToolRegistry.registerTool(new DeleteMultipleFilesTool());  // N dosyayı tek çağrıda sil
 
 // ── Power tools ───────────────────────────────────────────────────────────────
 globalToolRegistry.registerTool(new WebFetchTool());
