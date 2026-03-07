@@ -202,35 +202,56 @@ export class UpdaterService {
     }
 
     private installVsix(vsixPath: string): Promise<void> {
+        // VSCodium.exe / Code.exe → GUI binary, --install-extension desteklemiyor
+        // CLI binary'leri PATH'te veya exe'nin yanındaki bin/ klasöründe
+        const candidates = this.buildCliCandidates();
+        this._log.appendLine(`[Updater] CLI candidates: ${candidates.join(', ')}`);
         return new Promise((resolve, reject) => {
-            // process.execPath → VSCodium veya VS Code binary'si (her ikisinde de çalışır)
-            const execPath = process.execPath;
-            this._log.appendLine(`[Updater] Running: ${execPath} --install-extension ${vsixPath}`);
-            execFile(execPath, ['--install-extension', vsixPath, '--force'], (err, stdout, stderr) => {
-                if (err) {
-                    this._log.appendLine(`[Updater] execPath failed: ${err.message}, trying fallbacks...`);
-                    const candidates = process.platform === 'win32'
-                        ? ['codium.cmd', 'code.cmd', 'codium', 'code']
-                        : ['codium', 'code'];
-                    this.tryExecCandidates(candidates, vsixPath, resolve, reject);
-                } else {
-                    this._log.appendLine(`[Updater] Install stdout: ${stdout}`);
-                    resolve();
-                }
-            });
+            this.tryExecCandidates(candidates, vsixPath, resolve, reject);
         });
+    }
+
+    private buildCliCandidates(): string[] {
+        const execDir = path.dirname(process.execPath);
+
+        if (process.platform === 'win32') {
+            return [
+                // VSCodium: bin/ klasöründe codium.cmd
+                path.join(execDir, 'bin', 'codium.cmd'),
+                path.join(execDir, 'bin', 'code.cmd'),
+                // VS Code: Resources/app/bin/
+                path.join(execDir, 'resources', 'app', 'bin', 'code.cmd'),
+                // PATH'teki global komutlar
+                'codium.cmd',
+                'code.cmd',
+                'codium',
+                'code',
+            ];
+        } else {
+            return [
+                path.join(execDir, 'bin', 'codium'),
+                path.join(execDir, 'bin', 'code'),
+                'codium',
+                'code',
+            ];
+        }
     }
 
     private tryExecCandidates(candidates: string[], vsixPath: string, resolve: () => void, reject: (e: Error) => void) {
         if (candidates.length === 0) {
-            reject(new Error('No suitable VS Code / VSCodium CLI found.'));
+            reject(new Error('No suitable VS Code / VSCodium CLI found. Please install manually.'));
             return;
         }
         const [current, ...rest] = candidates;
         this._log.appendLine(`[Updater] Trying CLI: ${current}`);
-        execFile(current, ['--install-extension', vsixPath, '--force'], (err) => {
-            if (err) this.tryExecCandidates(rest, vsixPath, resolve, reject);
-            else resolve();
+        execFile(current, ['--install-extension', vsixPath, '--force'], (err, stdout) => {
+            if (err) {
+                this._log.appendLine(`[Updater] Failed (${current}): ${err.message.split('\n')[0]}`);
+                this.tryExecCandidates(rest, vsixPath, resolve, reject);
+            } else {
+                this._log.appendLine(`[Updater] Success with: ${current}\n${stdout}`);
+                resolve();
+            }
         });
     }
 
