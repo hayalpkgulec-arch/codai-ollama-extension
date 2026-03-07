@@ -1,8 +1,41 @@
+# Dev source
 .vscode/**
 .vscode-test/**
-out/test/**
 src/**
+**/*.map
+*.vsix
+
+# Configs & docs
 .gitignore
 tsconfig.json
-*.ts
-**/*.map
+tsconfig.*.json
+*.md
+!README.md
+*.log
+
+# Keep only compiled extension output
+out/test/**
+
+# Webview source (only keep /build output)
+webview-ui/src/**
+webview-ui/public/**
+webview-ui/node_modules/**
+webview-ui/.vite/**
+webview-ui/tsconfig.json
+webview-ui/tsconfig.node.json
+webview-ui/vite.config.ts
+webview-ui/vite.config.js
+webview-ui/package.json
+webview-ui/package-lock.json
+webview-ui/index.html
+webview-ui/README.md
+webview-ui/.gitignore
+
+# Root node_modules
+node_modules/**
+
+# Misc
+replace.js
+redo.js
+adapt-webview.js
+simple-test.html

@@ -2,8 +2,12 @@
   "name": "codai-ollama-tools",
   "displayName": "CodAI Ollama Tools",
   "description": "AI-powered coding assistant with Ollama integration",
-  "version": "0.0.2",
+  "version": "0.0.4",
   "publisher": "codai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hayalpkgulec-arch/codai-ollama-extension.git"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -20,7 +24,7 @@
         {
           "id": "codai-sidebar",
           "title": "CodAI",
-          "icon": "$(comment-discussion)"
+          "icon": "assets/icon.svg"
         }
       ]
     },
@@ -36,9 +40,34 @@
     "commands": [
       {
         "command": "codai.chat",
-        "title": "Open CodAI Chat"
+        "title": "CodAI: Open Chat",
+        "category": "CodAI"
+      },
+      {
+        "command": "codai.explainCode",
+        "title": "CodAI: Bu Kodu Açıkla",
+        "category": "CodAI"
+      },
+      {
+        "command": "codai.refactorCode",
+        "title": "CodAI: Bu Kodu Refaktör Et",
+        "category": "CodAI"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codai.explainCode",
+          "group": "1_modification@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "codai.refactorCode",
+          "group": "1_modification@2",
+          "when": "editorHasSelection"
+        }
+      ]
+    },
     "configuration": {
       "title": "CodAI",
       "properties": {
@@ -49,7 +78,7 @@
         },
         "codai.model": {
           "type": "string",
-          "default": "qwen3-coder:480b-cloud",
+          "default": "minimax-m2:cloud",
           "description": "Default Ollama model"
         }
       }
@@ -57,7 +86,9 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile:webview": "cd webview-ui && npm run build",
+    "compile:extension": "tsc -p ./",
+    "compile": "npm run compile:webview && npm run compile:extension",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile"
   },

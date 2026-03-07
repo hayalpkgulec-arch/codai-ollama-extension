@@ -1,0 +1,528 @@
+/* ══════════════════════════════════════════════════
+   PlanPanel — Interactive task planning component
+   ══════════════════════════════════════════════════ */
+
+/* ── Panel wrapper ────────────────────────────────── */
+.plan-panel {
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(86, 156, 214, 0.18);
+    background: rgba(86, 156, 214, 0.04);
+    font-family: inherit;
+    animation: planSlideIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+    max-height: 340px;
+    display: flex;
+    flex-direction: column;
+}
+
+.plan-panel.all-done {
+    border-color: rgba(78, 201, 176, 0.22);
+    background: rgba(78, 201, 176, 0.04);
+}
+
+@keyframes planSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Header ──────────────────────────────────────── */
+.plan-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 10px 7px 12px;
+    cursor: pointer;
+    user-select: none;
+    min-height: 34px;
+    position: relative;
+    flex-shrink: 0;
+    transition: background 0.15s;
+    border-radius: 0;
+}
+
+.plan-panel-header:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.plan-panel-header-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1;
+    min-width: 0;
+}
+
+.plan-panel-icon {
+    color: #569cd6;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.plan-panel-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    color: var(--vscode-foreground, #d4d4d4);
+    white-space: nowrap;
+}
+
+.plan-panel-count {
+    font-size: 10.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--vscode-descriptionForeground, #777);
+    background: rgba(255, 255, 255, 0.07);
+    padding: 1px 7px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ── Progress bar ─────────────────────────────────── */
+.plan-panel-progress-wrap {
+    flex: 1;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+    overflow: hidden;
+    min-width: 40px;
+    max-width: 80px;
+}
+
+.plan-panel-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #569cd6, #4ec9b0);
+    border-radius: 2px;
+    transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.plan-panel.all-done .plan-panel-progress-fill {
+    background: #4ec9b0;
+}
+
+/* ── Header right ─────────────────────────────────── */
+.plan-panel-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.plan-panel-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--vscode-descriptionForeground, #777);
+    cursor: pointer;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+    padding: 0;
+}
+
+.plan-panel-close:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.plan-chevron {
+    color: var(--vscode-descriptionForeground, #666);
+    flex-shrink: 0;
+}
+
+/* ── Summary ─────────────────────────────────────── */
+.plan-panel-summary {
+    padding: 4px 12px 6px;
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground, #888);
+    line-height: 1.4;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+}
+
+/* ── Task list body ───────────────────────────────── */
+.plan-panel-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 4px 0 4px;
+}
+
+.plan-panel-empty {
+    padding: 10px 14px;
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground, #666);
+    font-style: italic;
+}
+
+/* ── Task item ───────────────────────────────────── */
+.plan-task-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px 4px;
+    border-radius: 4px;
+    margin: 0 6px;
+    transition: background 0.12s;
+    min-height: 26px;
+    cursor: default;
+}
+
+.plan-task-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.plan-task-item:hover .plan-task-actions {
+    opacity: 1;
+}
+
+/* Status-specific styles */
+.plan-task-done {
+    opacity: 0.55;
+}
+
+.plan-task-active {
+    background: rgba(86, 156, 214, 0.07);
+}
+
+.plan-task-active:hover {
+    background: rgba(86, 156, 214, 0.11);
+}
+
+.plan-task-skipped {
+    opacity: 0.38;
+}
+
+/* ── Checkbox button ─────────────────────────────── */
+.plan-task-checkbox {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    border: 1.5px solid rgba(255, 255, 255, 0.2);
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+    transition: border-color 0.15s, background 0.15s;
+    color: transparent;
+}
+
+.plan-task-done .plan-task-checkbox {
+    background: #4ec9b0;
+    border-color: #4ec9b0;
+    color: #fff;
+}
+
+.plan-task-active .plan-task-checkbox {
+    border-color: #569cd6;
+}
+
+.plan-task-checkbox:hover {
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Active spinner ─────────────────────────────────────────── */
+.plan-task-spinner {
+    width: 9px;
+    height: 9px;
+    border: 1.5px solid rgba(86, 156, 214, 0.25);
+    border-top-color: #569cd6;
+    border-radius: 50%;
+    animation: taskSpin 0.75s linear infinite;
+    flex-shrink: 0;
+    display: block;
+}
+
+@keyframes taskSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.plan-task-empty-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Active text shimmer ─────────────────────────────────────── */
+.plan-task-text.active-shimmer {
+    background: linear-gradient(90deg,
+            var(--vscode-foreground, #d4d4d4) 0%,
+            var(--vscode-foreground, #d4d4d4) 30%,
+            rgba(255, 255, 255, 0.85) 50%,
+            var(--vscode-foreground, #d4d4d4) 70%,
+            var(--vscode-foreground, #d4d4d4) 100%);
+    background-size: 250% 100%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: slowShimmer 2.8s ease-in-out infinite;
+    font-weight: 500;
+}
+
+@keyframes slowShimmer {
+    0% {
+        background-position: 100% 0;
+    }
+
+    50% {
+        background-position: 0% 0;
+    }
+
+    100% {
+        background-position: 100% 0;
+    }
+}
+
+@keyframes activePulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.6;
+        transform: scale(0.85);
+    }
+}
+
+
+/* ── Task text ───────────────────────────────────── */
+.plan-task-text {
+    flex: 1;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--vscode-foreground, #d4d4d4);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.plan-task-done .plan-task-text {
+    text-decoration: line-through;
+    color: var(--vscode-descriptionForeground, #777);
+}
+
+.plan-task-active .plan-task-text {
+    font-weight: 500;
+    color: var(--vscode-foreground, #e4e4e4);
+}
+
+.plan-task-text.skipped {
+    text-decoration: line-through;
+    font-style: italic;
+    color: var(--vscode-descriptionForeground, #666);
+}
+
+/* ── Action buttons ──────────────────────────────── */
+.plan-task-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    flex-shrink: 0;
+}
+
+.plan-task-run-btn {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    border: 1px solid rgba(86, 156, 214, 0.35);
+    background: rgba(86, 156, 214, 0.08);
+    color: #569cd6;
+    font-size: 10.5px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.13s, border-color 0.13s;
+    white-space: nowrap;
+}
+
+.plan-task-run-btn:hover:not(:disabled) {
+    background: rgba(86, 156, 214, 0.18);
+    border-color: rgba(86, 156, 214, 0.6);
+}
+
+.plan-task-run-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.plan-task-skip-btn {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--vscode-descriptionForeground, #666);
+    cursor: pointer;
+    border-radius: 3px;
+    padding: 0;
+    transition: color 0.12s, background 0.12s;
+}
+
+.plan-task-skip-btn:hover {
+    color: var(--vscode-foreground, #d4d4d4);
+    background: rgba(255, 255, 255, 0.07);
+}
+
+/* ── Footer ──────────────────────────────────────── */
+.plan-panel-footer {
+    padding: 7px 10px 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    flex-shrink: 0;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+/* ── Accept Plan (primary CTA) ────────────────────── */
+.plan-accept-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 1;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(78, 201, 176, 0.4);
+    background: rgba(78, 201, 176, 0.1);
+    color: #4ec9b0;
+    font-size: 11.5px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s;
+    justify-content: center;
+}
+
+.plan-accept-btn:hover:not(:disabled) {
+    background: rgba(78, 201, 176, 0.2);
+    border-color: rgba(78, 201, 176, 0.65);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(78, 201, 176, 0.12);
+}
+
+.plan-accept-btn:disabled {
+    opacity: 0.38;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.plan-accept-arrow {
+    opacity: 0.7;
+    transition: transform 0.15s;
+}
+
+.plan-accept-btn:hover:not(:disabled) .plan-accept-arrow {
+    transform: translateX(2px);
+}
+
+/* ── Next step only (secondary) ──────────────────── */
+.plan-next-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--vscode-descriptionForeground, #888);
+    font-size: 10.5px;
+    font-family: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.13s, border-color 0.13s, color 0.13s;
+    flex-shrink: 0;
+}
+
+.plan-next-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--vscode-foreground, #d4d4d4);
+}
+
+.plan-next-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+/* ── Plan ready glow state ───────────────────────── */
+.plan-panel.plan-ready {
+    border-color: rgba(78, 201, 176, 0.28);
+    background: rgba(78, 201, 176, 0.04);
+}
+
+.plan-panel.plan-ready .plan-panel-icon {
+    color: #4ec9b0;
+}
+
+.plan-panel.plan-ready .plan-panel-title {
+    color: #4ec9b0;
+}
+
+/* ── Spinner for loading state ───────────────────── */
+.plan-panel-empty {
+    padding: 10px 14px;
+    font-size: 11.5px;
+    color: var(--vscode-descriptionForeground, #666);
+    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.plan-spinner {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid rgba(86, 156, 214, 0.2);
+    border-top-color: #569cd6;
+    border-radius: 50%;
+    animation: planSpin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes planSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ── All done message ─────────────────────────────── */
+.plan-panel-done-msg {
+    padding: 8px 14px;
+    font-size: 12px;
+    color: #4ec9b0;
+    border-top: 1px solid rgba(78, 201, 176, 0.15);
+    text-align: center;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+/* ── Max height increase for longer plans ─────────── */
+.plan-panel {
+    max-height: 380px;
+}
