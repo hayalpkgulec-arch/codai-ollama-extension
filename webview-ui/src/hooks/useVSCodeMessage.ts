@@ -37,6 +37,8 @@ function buildToolSummaryFromHistory(fnName: string, args: any): string {
     write_file: pathBase ? `Edited ${pathBase}` : 'Edited file',
     create_file: pathBase ? `Created ${pathBase}` : 'Created file',
     list_files: pathBase ? `List ${pathBase}` : 'List directory',
+    list_directory_tree: pathBase ? `Tree ${pathBase}` : 'List directory tree',
+    read_multiple_files: args?.paths ? `Read ${Array.isArray(args.paths) ? args.paths.length : '?'} files` : 'Read multiple files',
     search_files: args?.pattern ? `Search ${args.pattern}` : 'Search files',
     grep_code: args?.pattern ? `Grep "${args.pattern}"` : 'Search code',
     run_command: args?.command ? `Run: ${String(args.command).slice(0, 40)}` : 'Run command',
@@ -278,6 +280,8 @@ export function useVSCodeMessage() {
             if (last?.role === 'assistant') {
               return updateLast(prev, l => {
                 const segs = [...l.segments];
+                // Duplicate phaseId guard — aynı tool iki kez eklenmesin
+                if (segs.some(s => s.type === 'tool' && s.tool.phaseId === newTool.phaseId)) return l;
                 const lastSeg = segs[segs.length - 1];
                 if (lastSeg?.type === 'thinking' && !lastSeg.done) {
                   const finalMs = lastSeg.startedAt ? Date.now() - lastSeg.startedAt : undefined;

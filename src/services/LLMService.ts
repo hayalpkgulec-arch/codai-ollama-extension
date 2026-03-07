@@ -428,7 +428,8 @@ export class LLMService {
                         const sig = `${call.function?.name}::${call.function?.arguments}`;
                         if (!inlineSeen.has(sig)) {
                             inlineSeen.add(sig);
-                            const idx = toolCallsMap.size;
+                            // Negatif index kullan — native tool_calls (0,1,2,...) ile çakışmasın
+                            const idx = -(inlineSeen.size);
                             toolCallsMap.set(idx, call);
                         }
                     }
@@ -449,7 +450,11 @@ export class LLMService {
                         }
                         const existing = toolCallsMap.get(idx)!;
                         if (tc.id && !existing.id) existing.id = tc.id;
-                        if (tc.function?.name) existing.function.name += tc.function.name;
+                        // name: ilk chunk'ta tam isim gelir, += yapma — sadece boşsa set et
+                        if (tc.function?.name && !existing.function.name) {
+                            existing.function.name = tc.function.name;
+                        }
+                        // arguments: streaming'de parça parça gelir, biriktir
                         if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
                     }
                 }

@@ -7,7 +7,7 @@ import {
   FileEdit, FileSearch, AlertCircle, CheckCheck,
   XCircle, ChevronsUpDown, Copy, Folder, Trash2,
   Move, Search, Stethoscope, Globe, Code2,
-  FolderPlus, Info, Replace, RefreshCw,
+  FolderPlus, Info, Replace, RefreshCw, Files, FolderTree,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -458,6 +458,24 @@ const FindReplaceCard = memo(({ tool }: { tool: ToolCall }) => {
 });
 FindReplaceCard.displayName = 'FindReplaceCard';
 
+const ReadMultipleFilesCard = memo(({ tool }: { tool: ToolCall }) => {
+  const paths = tool.args?.paths;
+  const count = Array.isArray(paths) ? paths.length : null;
+  const meta = tool.status !== 'running' && count ? `${count} files` : undefined;
+  return <SimplePill tool={tool} icon={<Files size={11} />}
+    label={count ? `Read ${count} files` : tool.summary} meta={meta} />;
+});
+ReadMultipleFilesCard.displayName = 'ReadMultipleFilesCard';
+
+const ListDirectoryTreeCard = memo(({ tool }: { tool: ToolCall }) => {
+  const target = (tool.args?.path as string) || '.';
+  const lineCount = tool.status !== 'running' && tool.result
+    ? tool.result.split('\n').filter(Boolean).length : undefined;
+  const meta = lineCount ? `${lineCount} entries` : undefined;
+  return <SimplePill tool={tool} icon={<FolderTree size={11} />} label={target} meta={meta} />;
+});
+ListDirectoryTreeCard.displayName = 'ListDirectoryTreeCard';
+
 // ─── ToolCard Router ──────────────────────────────────────────────────────────
 interface ToolCardProps {
   tool: ToolCall;
@@ -477,6 +495,8 @@ export const ToolCard = memo(({ tool, decision, onDecide }: ToolCardProps) => {
   if (['read_file', 'view_file'].includes(n)) return <ReadFileCard tool={tool} />;
   if (['delete_file', 'remove_file'].includes(n)) return <DeleteFileCard tool={tool} />;
   if (['list_files', 'list_dir', 'browse'].includes(n)) return <ListFilesCard tool={tool} />;
+  if (n === 'list_directory_tree') return <ListDirectoryTreeCard tool={tool} />;
+  if (n === 'read_multiple_files') return <ReadMultipleFilesCard tool={tool} />;
   if (['search_files', 'grep', 'search'].includes(n)) return <SearchFilesCard tool={tool} />;
   if (['rename_file', 'move_file'].includes(n)) return <RenameFileCard tool={tool} />;
   if (['get_diagnostics', 'diagnose'].includes(n)) return <DiagnosticsCard tool={tool} />;

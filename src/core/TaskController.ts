@@ -144,10 +144,10 @@ export class TaskController {
         // "list_fileslist_files" → "list_files"
         // "read_fileread_file"   → "read_file"
         const KNOWN = [
-            'read_file','write_file','list_files','search_files','grep_code',
-            'run_command','delete_file','rename_file','get_diagnostics','web_fetch',
-            'create_directory','get_file_info','find_and_replace','append_to_file',
-            'task_notes','ask_followup_question','attempt_completion'
+            'read_file','write_file','list_files','list_directory_tree','read_multiple_files',
+            'search_files','grep_code','run_command','delete_file','rename_file',
+            'get_diagnostics','web_fetch','create_directory','get_file_info',
+            'find_and_replace','append_to_file','task_notes','ask_followup_question','attempt_completion'
         ];
         for (const known of KNOWN) {
             // "list_fileslist_files", "list_fileslist_files_extra" gibi pattern'ları yakala
@@ -198,6 +198,8 @@ export class TaskController {
             read_file:            pathName ? `Read ${pathName}` : 'Read file',
             write_file:           pathName ? `Edit ${pathName}` : 'Edit file',
             list_files:           pathName ? `List ${pathName}` : 'List directory',
+            list_directory_tree:  pathName ? `Tree ${pathName}` : 'List directory tree',
+            read_multiple_files:  args?.paths ? `Read ${Array.isArray(args.paths) ? args.paths.length : '?'} files` : 'Read multiple files',
             search_files:         args?.pattern ? `Search "${args.pattern}"` : 'Search files',
             grep_code:            args?.pattern ? `Grep "${args.pattern}"` : 'Search code',
             run_command:          cmd ? `Run: ${String(cmd).slice(0, 40)}` : 'Run command',
