@@ -195,8 +195,8 @@ export class LLMService {
         cleaned = cleaned
             .replace(/\{[^{}]*"name"\s*:\s*"[a-z_]+"[^{}]*"arguments"\s*:\s*\{[^{}]*\}\s*\}/g, '')
             .replace(/^\s*\[[\s\S]*?"name"\s*:\s*"[a-z_]+"[\s\S]*?\]\s*$/gm, '')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
+            .replace(/\n{3,}/g, '\n\n');
+        // NOT: .trim() kaldırıldı — token sonlarındaki boşluklar kelime sınırı için gerekli
 
         cleaned = this.sanitizeText(cleaned);
         return { calls, cleaned };
