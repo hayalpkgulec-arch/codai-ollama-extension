@@ -1541,15 +1541,76 @@ body,
     position: absolute;
     bottom: calc(100% + 6px);
     left: 0;
-    min-width: 210px;
-    max-width: 280px;
+    width: 240px;
     background: var(--vscode-editorWidget-background, #252526);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 10px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 2px 8px rgba(0, 0, 0, 0.3);
     z-index: 999;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
     animation: dropdownIn 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Search box */
+.model-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    flex-shrink: 0;
+}
+
+.model-search-icon {
+    color: var(--vscode-descriptionForeground, #666);
+    flex-shrink: 0;
+}
+
+.model-search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--vscode-foreground, #d4d4d4);
+    font-size: 11px;
+    font-family: inherit;
+    padding: 0;
+    min-width: 0;
+}
+
+.model-search-input::placeholder {
+    color: var(--vscode-descriptionForeground, #555);
+    opacity: 0.7;
+}
+
+/* Scrollable model list */
+.model-picker-list {
+    overflow-y: auto;
+    max-height: 220px;
+    overscroll-behavior: contain;
+}
+
+.model-picker-list::-webkit-scrollbar {
+    width: 3px;
+}
+
+.model-picker-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.model-picker-list::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 2px;
+}
+
+.model-no-results {
+    padding: 12px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground, #666);
+    text-align: center;
+    opacity: 0.7;
 }
 
 @keyframes dropdownIn {

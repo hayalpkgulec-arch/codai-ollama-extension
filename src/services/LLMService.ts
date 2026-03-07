@@ -398,10 +398,14 @@ export class LLMService {
                 throw new Error(`${label}: Invalid or missing API key. Go to Provider Settings and enter a valid key.`);
             }
             if (response.status === 429) {
-                throw new Error(`${label}: Rate limit exceeded. Wait a moment and try again.`);
+                throw new Error(`Rate limit exceeded (429): ${label}. Wait a moment and try again.`);
             }
             if (response.status === 402) {
                 throw new Error(`${label}: Insufficient credits. Check your account balance.`);
+            }
+            // Gemini: 503 RESOURCE_EXHAUSTED veya 200 ama body'de quota error
+            if (response.status === 503 && errText.includes('RESOURCE_EXHAUSTED')) {
+                throw new Error(`Rate limit exceeded (503 RESOURCE_EXHAUSTED): ${label}.`);
             }
             throw new Error(`${label} API error: ${response.status} — ${errText.slice(0, 200)}`);
         }
@@ -427,6 +431,15 @@ export class LLMService {
             if (data === '[DONE]') return;
             try {
                 const json = JSON.parse(data);
+                // Gemini stream içinde gelen quota/rate-limit hataları
+                if (json.error) {
+                    const code: string = json.error?.code || '';
+                    const msg: string  = json.error?.message || '';
+                    if (code === 'RESOURCE_EXHAUSTED' || json.error?.status === 429 || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('rate limit')) {
+                        throw new Error(`Rate limit exceeded (stream): ${msg}`);
+                    }
+                    throw new Error(`API stream error: ${msg}`);
+                }
                 const delta = json.choices?.[0]?.delta;
                 if (!delta) return;
 

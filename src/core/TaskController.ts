@@ -313,7 +313,14 @@ export class TaskController {
                 } catch (llmError: any) {
                     const msg: string = llmError?.message || '';
                     const isAbort = llmError?.name === 'AbortError' || msg.includes('aborted');
-                    const isRateLimit = msg.includes('Rate limit') || msg.includes('429');
+                    const isRateLimit =
+                        msg.includes('Rate limit') ||
+                        msg.includes('rate limit') ||
+                        msg.includes('429') ||
+                        msg.includes('RESOURCE_EXHAUSTED') ||
+                        msg.includes('quota') ||
+                        msg.includes('too many requests') ||
+                        msg.includes('Too Many Requests');
 
                     if (isAbort) {
                         continueLoop = false;
