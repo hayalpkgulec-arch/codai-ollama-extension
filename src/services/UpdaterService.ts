@@ -5,23 +5,43 @@ import * as path from 'path';
 import * as os from 'os';
 import { execFile } from 'child_process';
 
-const GITHUB_REPO = 'hayalpkgulec-arch/codai-ollama-extension';
-const GITHUB_API  = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-const CHECK_INTERVAL_MS = 30 * 60 * 1000; // 30 dakika
+const GITHUB_REPO    = 'hayalpkgulec-arch/codai-ollama-extension';
+const GITHUB_API     = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const CHECK_INTERVAL = 30 * 60 * 1000; // 30 dakika
 
 export class UpdaterService {
     private _timer?: ReturnType<typeof setInterval>;
     private _statusBar?: vscode.StatusBarItem;
+    private _updateCommandRegistered = false;
+    private _log: vscode.OutputChannel;
 
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(private readonly context: vscode.ExtensionContext) {
+        this._log = vscode.window.createOutputChannel('CodAI Updater');
+        context.subscriptions.push(this._log);
+    }
 
     // ── Public API ─────────────────────────────────────────────────────────────
 
     public start() {
-        // İlk kontrol — 10 saniye sonra (VS Code startup'ı bekle)
-        setTimeout(() => this.checkForUpdate(), 10_000);
+        this._log.appendLine(`[Updater] start() — current version: ${this.currentVersion()}`);
+        this._log.appendLine(`[Updater] execPath: ${process.execPath}`);
+
+        // Manuel "Check for updates" komutu — Command Palette'te görünür
+        const checkCmd = vscode.commands.registerCommand('codai.checkUpdate', () => {
+            this._log.appendLine('[Updater] Manual check triggered');
+            this._log.show(true);
+            this.checkForUpdate();
+        });
+        this.context.subscriptions.push(checkCmd);
+
+        // Startup'ta anında kontrol (2 sn bekle — extension host hazır olsun)
+        setTimeout(() => {
+            this._log.appendLine('[Updater] Startup check...');
+            this.checkForUpdate();
+        }, 2000);
+
         // Periyodik kontrol
-        this._timer = setInterval(() => this.checkForUpdate(), CHECK_INTERVAL_MS);
+        this._timer = setInterval(() => this.checkForUpdate(), CHECK_INTERVAL);
         this.context.subscriptions.push({ dispose: () => this.dispose() });
     }
 
@@ -32,89 +52,97 @@ export class UpdaterService {
 
     // ── Core logic ─────────────────────────────────────────────────────────────
 
-    private async checkForUpdate(): Promise<void> {
+    public async checkForUpdate(): Promise<void> {
+        const current = this.currentVersion();
+        this._log.appendLine(`[Updater] Checking... current=${current}`);
+
+        let release: any;
         try {
-            const release = await this.fetchLatestRelease();
-            if (!release) return;
-
-            const latest  = release.tag_name.replace(/^v/, '');
-            const current = this.context.extension.packageJSON.version as string;
-
-            if (!this.isNewer(latest, current)) return;
-
-            // Yeni versiyon var
-            const vsixAsset = (release.assets as any[]).find(
-                (a: any) => a.name.endsWith('.vsix')
-            );
-            if (!vsixAsset) return;
-
-            this.showUpdateNotification(current, latest, vsixAsset.browser_download_url);
-        } catch {
-            // Sessizce yut — ağ yoksa rahatsız etme
+            release = await this.fetchLatestRelease();
+        } catch (err: any) {
+            this._log.appendLine(`[Updater] fetchLatestRelease ERROR: ${err.message}`);
+            return;
         }
+
+        if (!release) {
+            this._log.appendLine('[Updater] No release found (404 or empty)');
+            return;
+        }
+
+        const latest = release.tag_name.replace(/^v/, '');
+        this._log.appendLine(`[Updater] latest=${latest} current=${current} isNewer=${this.isNewer(latest, current)}`);
+
+        if (!this.isNewer(latest, current)) {
+            this._log.appendLine('[Updater] Already up to date.');
+            return;
+        }
+
+        const vsixAsset = (release.assets as any[]).find((a: any) => a.name.endsWith('.vsix'));
+        if (!vsixAsset) {
+            this._log.appendLine('[Updater] No .vsix asset found in release!');
+            return;
+        }
+
+        this._log.appendLine(`[Updater] Update available! ${current} → ${latest}, asset: ${vsixAsset.name}`);
+        this.showUpdateNotification(current, latest, vsixAsset.browser_download_url);
     }
 
     private showUpdateNotification(current: string, latest: string, downloadUrl: string) {
         // Status bar badge
         if (!this._statusBar) {
             this._statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-            this._statusBar.command = 'codai.installUpdate';
             this.context.subscriptions.push(this._statusBar);
         }
+        this._statusBar.command = 'codai.installUpdate';
         this._statusBar.text = `$(arrow-circle-up) CodAI ${latest}`;
-        this._statusBar.tooltip = `CodAI güncellemesi mevcut: ${current} → ${latest}. Tıkla yükle.`;
+        this._statusBar.tooltip = `CodAI güncellemesi: v${current} → v${latest}. Tıkla yükle.`;
         this._statusBar.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         this._statusBar.show();
 
-        // Bildirim popup
+        // installUpdate komutunu bir kez register et
+        if (!this._updateCommandRegistered) {
+            this._updateCommandRegistered = true;
+            const cmd = vscode.commands.registerCommand('codai.installUpdate', () =>
+                this.installUpdate(downloadUrl, latest)
+            );
+            this.context.subscriptions.push(cmd);
+        }
+
+        // Popup
         vscode.window.showInformationMessage(
             `CodAI güncellemesi mevcut: v${current} → v${latest}`,
             'Şimdi Güncelle',
             'Sonra'
         ).then(choice => {
-            if (choice === 'Şimdi Güncelle') {
-                this.installUpdate(downloadUrl, latest);
-            }
+            if (choice === 'Şimdi Güncelle') this.installUpdate(downloadUrl, latest);
         });
-
-        // Komutu kaydet (status bar tıklaması için)
-        this.context.subscriptions.push(
-            vscode.commands.registerCommand('codai.installUpdate', () =>
-                this.installUpdate(downloadUrl, latest)
-            )
-        );
     }
 
     public async installUpdate(downloadUrl: string, version: string): Promise<void> {
+        this._log.appendLine(`[Updater] Installing v${version} from ${downloadUrl}`);
         await vscode.window.withProgress(
-            {
-                location: vscode.ProgressLocation.Notification,
-                title: `CodAI v${version} indiriliyor…`,
-                cancellable: false,
-            },
+            { location: vscode.ProgressLocation.Notification, title: `CodAI v${version} yükleniyor…`, cancellable: false },
             async (progress) => {
                 try {
                     progress.report({ increment: 10, message: 'İndiriliyor…' });
                     const vsixPath = await this.downloadFile(downloadUrl, `codai-${version}.vsix`);
+                    this._log.appendLine(`[Updater] Downloaded to ${vsixPath}`);
 
                     progress.report({ increment: 60, message: 'Yükleniyor…' });
                     await this.installVsix(vsixPath);
+                    this._log.appendLine(`[Updater] Installed successfully`);
 
                     progress.report({ increment: 30, message: 'Tamamlandı!' });
-
-                    // Temp dosyayı temizle
                     try { fs.unlinkSync(vsixPath); } catch { /* ignore */ }
-
                     this._statusBar?.hide();
 
                     const reload = await vscode.window.showInformationMessage(
-                        `CodAI v${version} başarıyla yüklendi. Değişikliklerin aktif olması için yeniden yükle.`,
+                        `CodAI v${version} yüklendi. Değişikliklerin aktif olması için yeniden yükle.`,
                         'Şimdi Yeniden Yükle'
                     );
-                    if (reload) {
-                        vscode.commands.executeCommand('workbench.action.reloadWindow');
-                    }
+                    if (reload) vscode.commands.executeCommand('workbench.action.reloadWindow');
                 } catch (err: any) {
+                    this._log.appendLine(`[Updater] Install ERROR: ${err.message}`);
                     vscode.window.showErrorMessage(`CodAI güncelleme hatası: ${err.message}`);
                 }
             }
@@ -131,16 +159,21 @@ export class UpdaterService {
                     'Accept': 'application/vnd.github.v3+json',
                 }
             };
+            this._log.appendLine(`[Updater] GET ${GITHUB_API}`);
             https.get(GITHUB_API, options, (res) => {
+                this._log.appendLine(`[Updater] HTTP ${res.statusCode}`);
                 if (res.statusCode === 404) { resolve(null); return; }
                 if (res.statusCode !== 200) { reject(new Error(`GitHub API: ${res.statusCode}`)); return; }
                 let data = '';
-                res.on('data', chunk => data += chunk);
+                res.on('data', (chunk) => data += chunk);
                 res.on('end', () => {
                     try { resolve(JSON.parse(data)); }
                     catch (e) { reject(e); }
                 });
-            }).on('error', reject);
+            }).on('error', (err) => {
+                this._log.appendLine(`[Updater] Network error: ${err.message}`);
+                reject(err);
+            });
         });
     }
 
@@ -148,8 +181,8 @@ export class UpdaterService {
         const dest = path.join(os.tmpdir(), filename);
         return new Promise((resolve, reject) => {
             const follow = (redirectUrl: string) => {
+                this._log.appendLine(`[Updater] Downloading: ${redirectUrl}`);
                 https.get(redirectUrl, { headers: { 'User-Agent': 'CodAI-Updater/1.0' } }, (res) => {
-                    // GitHub asset download → 302 redirect
                     if (res.statusCode === 302 || res.statusCode === 301) {
                         follow(res.headers.location!);
                         return;
@@ -161,7 +194,7 @@ export class UpdaterService {
                     const file = fs.createWriteStream(dest);
                     res.pipe(file);
                     file.on('finish', () => file.close(() => resolve(dest)));
-                    file.on('error', err => { fs.unlink(dest, () => {}); reject(err); });
+                    file.on('error', (err) => { fs.unlink(dest, () => {}); reject(err); });
                 }).on('error', reject);
             };
             follow(url);
@@ -170,43 +203,41 @@ export class UpdaterService {
 
     private installVsix(vsixPath: string): Promise<void> {
         return new Promise((resolve, reject) => {
-            // process.execPath → VSCodium'da "codium", VS Code'da "code" binary'si
-            // Örnek: /usr/share/codium/codium  veya  C:\...\VSCodium\VSCodium.exe
-            // --install-extension CLI flag'i her ikisinde de aynı şekilde çalışır
+            // process.execPath → VSCodium veya VS Code binary'si (her ikisinde de çalışır)
             const execPath = process.execPath;
-
-            execFile(execPath, ['--install-extension', vsixPath, '--force'], (err) => {
+            this._log.appendLine(`[Updater] Running: ${execPath} --install-extension ${vsixPath}`);
+            execFile(execPath, ['--install-extension', vsixPath, '--force'], (err, stdout, stderr) => {
                 if (err) {
-                    // Fallback: codium / code komutlarını PATH'te ara
+                    this._log.appendLine(`[Updater] execPath failed: ${err.message}, trying fallbacks...`);
                     const candidates = process.platform === 'win32'
                         ? ['codium.cmd', 'code.cmd', 'codium', 'code']
                         : ['codium', 'code'];
                     this.tryExecCandidates(candidates, vsixPath, resolve, reject);
                 } else {
+                    this._log.appendLine(`[Updater] Install stdout: ${stdout}`);
                     resolve();
                 }
             });
         });
     }
 
-    private tryExecCandidates(
-        candidates: string[],
-        vsixPath: string,
-        resolve: () => void,
-        reject: (err: Error) => void
-    ): void {
+    private tryExecCandidates(candidates: string[], vsixPath: string, resolve: () => void, reject: (e: Error) => void) {
         if (candidates.length === 0) {
-            reject(new Error('No suitable VS Code / VSCodium CLI found. Please restart manually.'));
+            reject(new Error('No suitable VS Code / VSCodium CLI found.'));
             return;
         }
         const [current, ...rest] = candidates;
+        this._log.appendLine(`[Updater] Trying CLI: ${current}`);
         execFile(current, ['--install-extension', vsixPath, '--force'], (err) => {
             if (err) this.tryExecCandidates(rest, vsixPath, resolve, reject);
             else resolve();
         });
     }
 
-    /** Semantic version karşılaştırması: latest > current mu? */
+    private currentVersion(): string {
+        return this.context.extension.packageJSON.version as string;
+    }
+
     private isNewer(latest: string, current: string): boolean {
         const parse = (v: string) => v.split('.').map(Number);
         const [lMaj, lMin, lPat] = parse(latest);

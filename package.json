@@ -2,7 +2,7 @@
   "name": "codai-ollama-tools",
   "displayName": "CodAI Ollama Tools",
   "description": "AI-powered coding assistant with Ollama integration",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "publisher": "codai",
   "repository": {
     "type": "git",
@@ -53,6 +53,11 @@
       {
         "command": "codai.refactorCode",
         "title": "CodAI: Bu Kodu Refaktör Et",
+        "category": "CodAI"
+      },
+      {
+        "command": "codai.checkUpdate",
+        "title": "CodAI: Check for Updates",
         "category": "CodAI"
       }
     ],
