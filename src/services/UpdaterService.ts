@@ -244,7 +244,15 @@ export class UpdaterService {
         }
         const [current, ...rest] = candidates;
         this._log.appendLine(`[Updater] Trying CLI: ${current}`);
-        execFile(current, ['--install-extension', vsixPath, '--force'], (err, stdout) => {
+
+        // Windows'ta .cmd dosyaları execFile ile doğrudan çalışmaz → cmd.exe /c ile sar
+        const isWinCmd = process.platform === 'win32' && current.toLowerCase().endsWith('.cmd');
+        const bin  = isWinCmd ? 'cmd.exe' : current;
+        const args = isWinCmd
+            ? ['/c', current, '--install-extension', vsixPath, '--force']
+            : ['--install-extension', vsixPath, '--force'];
+
+        execFile(bin, args, (err, stdout) => {
             if (err) {
                 this._log.appendLine(`[Updater] Failed (${current}): ${err.message.split('\n')[0]}`);
                 this.tryExecCandidates(rest, vsixPath, resolve, reject);
