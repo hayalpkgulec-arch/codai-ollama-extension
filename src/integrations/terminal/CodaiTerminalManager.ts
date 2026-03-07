@@ -25,6 +25,42 @@ const TRUNCATE_KEEP_LINES     = 100;           // truncate'de baş+son için sak
 const SHELL_INTEGRATION_WAIT  = 4_000;         // 4s — shell integration timeout
 const BACKGROUND_TIMEOUT_MS   = 10 * 60_000;  // 10 dakika — zombie process koruması
 
+// Background komutlar için:
+// - İlk çıktıdan sonra isHot=true, output gelmeye devam ettiği sürece bekle
+// - Son çıktıdan bu kadar ms sonra "settled" sayılır ve dönülür
+const BG_SETTLED_TIMEOUT_MS   = 2_000;   // 2s sessizlik → settled
+// Hiç çıktı gelmezse bu kadar bekle
+const BG_INITIAL_WAIT_MS      = 5_000;   // 5s initial wait
+// Maksimum bekleme (sunucu hala başlıyorsa bile dön)
+const BG_MAX_WAIT_MS          = 15_000;  // 15s hard max
+
+// Hata belirten pattern'ler — bunlar görülünce hemen dön
+const ERROR_PATTERNS = [
+    /\b(error|Error|ERROR)\b.*:/,
+    /\bFailed to\b/i,
+    /\bCannot find\b/i,
+    /\bModule not found\b/i,
+    /\bSyntaxError\b/,
+    /\bTypeError\b/,
+    /\bReferenceError\b/,
+    /\bfailed with exit code\b/i,
+    /\[ERROR\]/,
+    /✗.*error/i,
+];
+
+// Sunucunun başarıyla başladığını gösteren pattern'ler — görülünce dön
+const SERVER_READY_PATTERNS = [
+    /Local:\s+http/i,
+    /localhost:\d+/i,
+    /ready in \d+/i,
+    /listening on/i,
+    /server running/i,
+    /started server/i,
+    /running at/i,
+    /available at/i,
+    /\bready\b.*\bhttp/i,
+];
+
 // Dev server pattern'leri — otomatik background olarak algılanır
 const LONG_RUNNING_PATTERNS = [
     /\bnpm\s+(run\s+)?(dev|start|serve|watch|preview)\b/i,
@@ -261,30 +297,104 @@ export async function runCommand(
             }, BACKGROUND_TIMEOUT_MS);
             _bgProcesses.set(bgId, { proc: child, timer: zombieTimer });
 
-            // Return after initial output window
-            const bgTimer = setTimeout(() => {
+            let settledTimer: NodeJS.Timeout | null = null;
+            let hasReceivedOutput = false;
+            let hasError = false;
+
+            // ── Adaptive settled detection ────────────────────────────────
+            // Cline'ın isHot yaklaşımını genişlettik:
+            // Output geldikçe settled timer'ı sıfırla.
+            // Hata görülünce veya server ready olunca hemen dön.
+            // 2s sessizlik veya 15s max sonra dön.
+            const scheduleSettle = (immediate = false) => {
+                if (settledTimer) clearTimeout(settledTimer);
+                settledTimer = setTimeout(() => {
+                    if (finished) return;
+                    finished = true;
+                    clearTimeout(maxTimer);
+                    const lines = buildLines(stdoutRaw, stderrRaw);
+                    // Hata varsa error status döndür — AI görsün
+                    const status = hasError ? 'error' : 'background';
+                    resolve({
+                        status,
+                        stdout: truncateOutput(lines.stdout),
+                        stderr: lines.stderrStr,
+                        exitCode: hasError ? 1 : null,
+                        signal: null,
+                        durationMs: Date.now() - startedAt,
+                        background: !hasError,
+                        autoDetected: autoDetectedBg,
+                        bgId,
+                        pid: child.pid,
+                        truncated: lines.stdout.length > MAX_OUTPUT_LINES,
+                        timedOut: false,
+                    });
+                }, immediate ? 200 : BG_SETTLED_TIMEOUT_MS);
+            };
+
+            // Override onData to trigger settle logic
+            const origOnData = onData;
+            const bgOnData = (chunk: Buffer, isStderr: boolean) => {
+                origOnData(chunk, isStderr);
+                const text = stripAnsi(chunk.toString('utf8'));
+                hasReceivedOutput = true;
+
+                // Hata pattern'i görüldü mü?
+                if (ERROR_PATTERNS.some(p => p.test(text))) {
+                    hasError = true;
+                    scheduleSettle(true); // hemen dön
+                    return;
+                }
+                // Server ready pattern'i görüldü mü?
+                if (SERVER_READY_PATTERNS.some(p => p.test(text))) {
+                    scheduleSettle(true); // hemen dön
+                    return;
+                }
+                // Normal çıktı: settled timer'ı sıfırla
+                scheduleSettle(false);
+            };
+
+            // Re-attach listeners with bg-aware version
+            child.stdout?.removeAllListeners('data');
+            child.stderr?.removeAllListeners('data');
+            child.stdout?.on('data', (d: Buffer) => bgOnData(d, false));
+            child.stderr?.on('data', (d: Buffer) => bgOnData(d, true));
+
+            // Initial wait: eğer hiç çıktı gelmezse BG_INITIAL_WAIT_MS sonra başlat
+            const initialTimer = setTimeout(() => {
+                if (!hasReceivedOutput && !finished) {
+                    scheduleSettle(false);
+                }
+            }, BG_INITIAL_WAIT_MS);
+
+            // Hard max: her halükarda BG_MAX_WAIT_MS sonra dön
+            const maxTimer = setTimeout(() => {
                 if (finished) return;
                 finished = true;
+                clearTimeout(settledTimer ?? undefined);
+                clearTimeout(initialTimer);
                 const lines = buildLines(stdoutRaw, stderrRaw);
                 resolve({
-                    status: 'background',
+                    status: hasError ? 'error' : 'background',
                     stdout: truncateOutput(lines.stdout),
                     stderr: lines.stderrStr,
                     exitCode: null,
                     signal: null,
                     durationMs: Date.now() - startedAt,
-                    background: true,
+                    background: !hasError,
                     autoDetected: autoDetectedBg,
                     bgId,
                     pid: child.pid,
                     truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                     timedOut: false,
                 });
-            }, timeoutMs);
+            }, BG_MAX_WAIT_MS);
 
             child.on('close', (code, sig) => {
-                clearTimeout(bgTimer);
                 clearTimeout(zombieTimer);
+                clearTimeout(settledTimer ?? undefined);
+                clearTimeout(initialTimer);
+                clearTimeout(maxTimer);
                 _bgProcesses.delete(bgId);
                 if (finished) return;
                 finished = true;
