@@ -159,15 +159,7 @@ export default function App() {
     return pending;
   }, [messages, decisions]);
 
-  // ── Last assistant message has ANY segment? ──────────────────────────────
-  // WorkingIndicator must hide if the last assistant msg already has segments,
-  // otherwise we get duplicate "..." (segments render their own loading state)
-  const lastMessageHasContent = useMemo(() => {
-    const last = messages[messages.length - 1];
-    if (!last || last.role !== 'assistant') return false;
-    // ANY segment present → message is already rendering something
-    return last.segments.length > 0;
-  }, [messages]);
+
 
   // ── Decisions ────────────────────────────────────────────────────────────
   const onDecide = useCallback((phaseId: string, decision: 'accepted' | 'rejected', proposalId: string) => {
@@ -574,13 +566,15 @@ export default function App() {
               </div>
             ))}
 
-            {/* Kilo-style WorkingIndicator — only when no content visible yet */}
-            <WorkingIndicator
-              isProcessing={isProcessing}
-              isStreaming={isStreaming}
-              iterationCount={iterationCount}
-              lastMessageHasContent={lastMessageHasContent}
-            />
+            {/* WorkingIndicator — between turns, before first assistant message appears */}
+            {isProcessing && !messages.some(m => m.role === 'assistant') && (
+              <WorkingIndicator
+                isProcessing={isProcessing}
+                isStreaming={isStreaming}
+                iterationCount={iterationCount}
+                lastMessageHasContent={false}
+              />
+            )}
 
             <div ref={endRef} />
           </div>
