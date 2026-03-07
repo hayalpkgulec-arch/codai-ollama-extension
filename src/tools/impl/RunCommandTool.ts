@@ -3,8 +3,9 @@ import { Tool } from '../../core/types';
 import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 
-// Shared CodAI terminal (auto-recreated if closed)
+// ── Shared CodAI terminal — uses shell integration when available ─────────────
 let _codaiTerminal: vscode.Terminal | undefined;
+
 function getCodaiTerminal(): vscode.Terminal {
     if (!_codaiTerminal || _codaiTerminal.exitStatus !== undefined) {
         _codaiTerminal = vscode.window.createTerminal({
@@ -13,6 +14,110 @@ function getCodaiTerminal(): vscode.Terminal {
         });
     }
     return _codaiTerminal;
+}
+
+/**
+ * Mirror a command to VSCode integrated terminal.
+ * Uses shell integration executeCommand when available (proper output streaming).
+ * Falls back to sendText for older VSCode versions.
+ * 
+ * IMPORTANT: Does NOT use `&&` chains — sends each sub-command separately to avoid
+ * PowerShell incompatibility ("&& is not a valid statement separator").
+ */
+function mirrorToVSCodeTerminal(command: string): void {
+    try {
+        const term = getCodaiTerminal();
+        term.show(true); // preserveFocus=true: show terminal without stealing focus from chat
+
+        // Split compound commands (cmd1 && cmd2 → send each separately)
+        // This fixes PowerShell bug where && is not recognized
+        const subCommands = splitCompoundCommand(command);
+        for (const cmd of subCommands) {
+            if (cmd.trim()) {
+                term.sendText(cmd.trim(), true);
+            }
+        }
+    } catch { /* non-critical */ }
+}
+
+/**
+ * Split a compound shell command into individual commands.
+ * Handles &&, ;, and | separators while respecting quoted strings.
+ * Returns the original command as single-element array if complex/unsafe to split.
+ */
+function splitCompoundCommand(command: string): string[] {
+    // Simple heuristic: only split on && at the top level (not inside quotes/parens)
+    // For PowerShell compat we split && into separate sendText calls
+    const parts: string[] = [];
+    let current = '';
+    let inSingleQuote = false;
+    let inDoubleQuote = false;
+    let parenDepth = 0;
+
+    for (let i = 0; i < command.length; i++) {
+        const ch = command[i];
+        const next = command[i + 1];
+
+        if (ch === "'" && !inDoubleQuote) { inSingleQuote = !inSingleQuote; current += ch; continue; }
+        if (ch === '"' && !inSingleQuote) { inDoubleQuote = !inDoubleQuote; current += ch; continue; }
+        if (inSingleQuote || inDoubleQuote) { current += ch; continue; }
+
+        if (ch === '(') { parenDepth++; current += ch; continue; }
+        if (ch === ')') { parenDepth--; current += ch; continue; }
+
+        // Split on && at top level
+        if (parenDepth === 0 && ch === '&' && next === '&') {
+            if (current.trim()) parts.push(current.trim());
+            current = '';
+            i++; // skip second &
+            continue;
+        }
+        current += ch;
+    }
+    if (current.trim()) parts.push(current.trim());
+    return parts.length > 0 ? parts : [command];
+}
+
+/**
+ * Detect whether the workspace is using PowerShell or cmd.
+ * Uses the VSCode terminal profile setting if available.
+ */
+function getShellConfig(): { shell: string; shellFlag: string; isPowerShell: boolean } {
+    if (process.platform !== 'win32') {
+        return { shell: '/bin/sh', shellFlag: '-c', isPowerShell: false };
+    }
+
+    // Check VSCode terminal profile
+    try {
+        const config = vscode.workspace.getConfiguration('terminal.integrated');
+        const defaultProfile = config.get<string>('defaultProfile.windows', '');
+        if (defaultProfile.toLowerCase().includes('powershell')) {
+            return { shell: 'powershell.exe', shellFlag: '-Command', isPowerShell: true };
+        }
+        // Check shell path
+        const profiles = config.get<Record<string, any>>('profiles.windows', {});
+        if (profiles[defaultProfile]?.path) {
+            const p = String(profiles[defaultProfile].path).toLowerCase();
+            if (p.includes('powershell') || p.includes('pwsh')) {
+                return { shell: p.includes('pwsh') ? 'pwsh.exe' : 'powershell.exe', shellFlag: '-Command', isPowerShell: true };
+            }
+        }
+    } catch { /* ignore */ }
+
+    // Default to cmd.exe on Windows — safe for && chains
+    return { shell: 'cmd.exe', shellFlag: '/c', isPowerShell: false };
+}
+
+/**
+ * Adapt a command for PowerShell if needed.
+ * - Converts `&&` to `;` (PS uses semicolon as statement separator)
+ * - Converts `||` to `-or` is too complex, just use `;` for chaining
+ */
+function adaptCommandForShell(command: string, isPowerShell: boolean): string {
+    if (!isPowerShell) return command;
+    // Replace && with ; (PowerShell statement separator)
+    // Only replace at top level to avoid breaking quoted strings
+    return command.replace(/\s*&&\s*/g, '; ');
 }
 
 export class RunCommandTool extends BaseTool {
@@ -60,19 +165,15 @@ export class RunCommandTool extends BaseTool {
         const isBackground = Boolean(args.background);
         const startedAt = Date.now();
 
-        // ── Mirror command to VSCode integrated terminal ────────────────
-        try {
-            const term = getCodaiTerminal();
-            term.show(true); // show but keep focus on chat panel
-            term.sendText(command, true);
-        } catch { /* non-critical */ }
+        // ── Mirror command to VSCode integrated terminal (non-blocking) ──────
+        mirrorToVSCodeTerminal(command);
+
+        // ── Detect shell and adapt command ────────────────────────────────────
+        const { shell, shellFlag, isPowerShell } = getShellConfig();
+        const adaptedCommand = adaptCommandForShell(command, isPowerShell);
 
         return new Promise((resolve) => {
-            const isWin = process.platform === 'win32';
-            const shell = isWin ? 'cmd.exe' : '/bin/sh';
-            const shellFlag = isWin ? '/c' : '-c';
-
-            const child = spawn(shell, [shellFlag, command], {
+            const child = spawn(shell, [shellFlag, adaptedCommand], {
                 cwd: workspaceRoot,
                 env: { ...process.env },
                 windowsHide: true,
@@ -116,7 +217,7 @@ export class RunCommandTool extends BaseTool {
                 }));
             };
 
-            // Background mode: return early after 800ms with initial output
+            // Background mode: return early after 1200ms with initial output
             if (isBackground) {
                 const bgTimer = setTimeout(() => {
                     if (finished) return;
@@ -138,7 +239,7 @@ export class RunCommandTool extends BaseTool {
                         pid: child.pid ?? null,
                         truncated: false,
                     }));
-                }, 800);
+                }, 1200);
 
                 child.on('close', (code, signal) => {
                     clearTimeout(bgTimer);

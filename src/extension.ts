@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
 import { ChatViewProvider } from './providers/ChatViewProvider';
 import { UpdaterService } from './services/UpdaterService';
+import { DiffViewProvider } from './integrations/DiffViewProvider';
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('CodAI Ollama extension activated');
+
+    // ── Register diff content provider (codai-diff:// URI scheme) ────────────
+    DiffViewProvider.registerProvider(context);
 
     // ── Auto-updater ──────────────────────────────────────────────────────────
     const updater = new UpdaterService(context);

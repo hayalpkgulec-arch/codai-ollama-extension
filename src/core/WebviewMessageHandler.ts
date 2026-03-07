@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { TaskController } from './TaskController';
+import { DiffViewProvider } from '../integrations/DiffViewProvider';
 
 // ── Shared VSCode terminal used by AI commands ─────────────────────────────
 let _sharedTerminal: vscode.Terminal | undefined;
@@ -93,38 +94,29 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 break;
             }
 
-            // ── Show VSCode diff view for a file ──────────────────────────
+            // ── Show VSCode diff view for a file (Cline-style) ───────────
             case 'showDiff': {
                 const workspaceRoot2 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-                if (!workspaceRoot2 || !data.path) break;
+                if (!workspaceRoot2) break;
                 try {
-                    const absPath2 = path.isAbsolute(data.path)
-                        ? data.path
-                        : path.join(workspaceRoot2, data.path);
+                    // If path not provided, try to open diff for the active editor
+                    const filePath = data.path
+                        ? (path.isAbsolute(data.path) ? data.path : path.join(workspaceRoot2, data.path))
+                        : vscode.window.activeTextEditor?.document.uri.fsPath;
 
-                    // Write "before" content to a temp virtual document
+                    if (!filePath) break;
+
                     const beforeContent: string = data.before ?? '';
                     const afterContent: string = data.after ?? '';
 
-                    // Use the git diff scheme or a simple in-memory provider approach.
-                    // We store before content in a temp file in /tmp and diff against current.
-                    const os = require('os');
-                    const crypto = require('crypto');
-                    const hash = crypto.createHash('md5').update(absPath2).digest('hex').slice(0, 8);
-                    const tmpDir = path.join(os.tmpdir(), 'codai-diff');
-                    fs.mkdirSync(tmpDir, { recursive: true });
-                    const tmpFile = path.join(tmpDir, `before-${hash}-${path.basename(absPath2)}`);
-                    fs.writeFileSync(tmpFile, beforeContent, 'utf-8');
-
-                    const leftUri = vscode.Uri.file(tmpFile).with({ scheme: 'file' });
-                    const rightUri = vscode.Uri.file(absPath2);
-                    const title = `${path.basename(absPath2)} (AI changes)`;
-
-                    await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title, {
-                        preview: true,
-                    });
+                    // Use the proper Cline-style diff provider
+                    await DiffViewProvider.showDiff(
+                        beforeContent,
+                        afterContent,
+                        filePath,
+                        data.mode === 'creating',
+                    );
                 } catch (e: any) {
-                    // Silently ignore diff errors — not critical
                     console.error('CodAI diff error:', e);
                 }
                 break;

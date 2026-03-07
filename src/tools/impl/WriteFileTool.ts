@@ -3,6 +3,7 @@ import { Tool, WriteFileMode } from '../../core/types';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { buildUnifiedLineDiff } from '../../core/diff/lineDiff';
+import { DiffViewProvider } from '../../integrations/DiffViewProvider';
 
 export class WriteFileTool extends BaseTool {
     get definition(): Tool {
@@ -67,13 +68,14 @@ export class WriteFileTool extends BaseTool {
             });
             const preview = afterContent.split(/\r?\n/).slice(0, 24).join('\n');
 
-            // ── Emit diff to webview → VSCode diff view ─────────────────
-            this.emitToWebview('showDiff', {
-                path: relativePath,
-                before: beforeContent,
-                after: afterContent,
-                mode,
-            });
+            // ── Open VSCode native diff view (Cline-style) ───────────────
+            // Non-blocking: fire-and-forget so it doesn't delay tool result
+            DiffViewProvider.showDiff(
+                beforeContent,
+                afterContent,
+                filePath,
+                mode === 'creating',
+            ).catch(() => { /* non-critical */ });
 
             return JSON.stringify({
                 __tool: 'write_file',
