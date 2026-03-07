@@ -117,6 +117,20 @@ export class WorkspaceManager {
         this.planSummary = '';
     }
 
+    // ── Token estimation ──────────────────────────────────────────────────────
+    /**
+     * Rough token count estimate: characters / 4 (standard heuristic).
+     * Good enough for display purposes without a real tokenizer.
+     */
+    public estimateTokenCount(): { contextTokens: number; contextChars: number } {
+        const historyText = this.conversationHistory
+            .map(m => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
+            .join(' ');
+        const contextChars = historyText.length;
+        const contextTokens = Math.round(contextChars / 4);
+        return { contextTokens, contextChars };
+    }
+
     /**
      * Build a basic project summary without the old analyze_project tool.
      * Reads package.json / pyproject.toml / Cargo.toml etc. directly.

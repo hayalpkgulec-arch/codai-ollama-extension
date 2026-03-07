@@ -58,9 +58,20 @@ function saveToStorage(sessions: SessionInfo[]): void {
 
 // ── Generate title from first user message ────────────────────────────────────
 export function generateSessionTitle(firstUserText: string): string {
-  const clean = firstUserText.trim().replace(/\s+/g, ' ');
-  if (clean.length <= 50) return clean;
-  return clean.slice(0, 47) + '…';
+  let text = firstUserText.trim();
+
+  // Strip context block prefix: [Context: path]\n```lang\n...\n```\n\n
+  // This is prepended when user adds a file context — title should be the real question
+  text = text.replace(/^\[Context:[^\]]*\]\n```[\s\S]*?```\n*/g, '').trim();
+
+  // Strip leading @ mentions like "@src/file.ts " at the start
+  text = text.replace(/^(@\S+\s+)+/, '').trim();
+
+  // Collapse whitespace and newlines
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (!clean) return 'New Chat';
+  if (clean.length <= 52) return clean;
+  return clean.slice(0, 49) + '…';
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────

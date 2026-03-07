@@ -4,6 +4,7 @@ import {
     Settings, Check, Loader2,
     ExternalLink, Eye, EyeOff, RefreshCw, Cpu, Cloud, X, Plus, KeyRound
 } from 'lucide-react';
+import { AutoApproveSettings } from './AutoApproveSettings';
 
 // ── Provider tanımları (frontend kopyası) ─────────────────────────────────────
 export type ProviderId = 'ollama' | 'openrouter' | 'groq' | 'gemini' | 'cerebras' | 'mistral' | 'custom';
@@ -477,6 +478,9 @@ export const ProviderSettings = memo(({
                     ))}
                 </div>
             </div>
+
+            {/* ── Auto-Approve section ── */}
+            <AutoApproveSettings />
         </div>
     );
 });

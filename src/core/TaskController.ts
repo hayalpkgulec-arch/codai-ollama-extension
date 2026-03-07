@@ -8,11 +8,13 @@ import { PROVIDER_DEFS } from '../services/providers';
 import { globalToolRegistry } from '../tools/index';
 import { buildEnvironmentDetails } from './SystemPrompts';
 import { getCodaiTerminal, hasRunningBgProcesses, getRunningBgProcesses, killBackgroundProcess } from '../integrations/terminal/CodaiTerminalManager';
+import { CheckpointManager } from '../integrations/checkpoints/CheckpointManager';
 
 export class TaskController {
     private _view?: vscode.Webview;
     private llmService: LLMService;
     private workspaceManager: WorkspaceManager;
+    private checkpointManager?: CheckpointManager;
     private turnSequenceByRequestId = new Map<string, number>();
     private pendingWriteProposals = new Map<string, any>();
     private activeAbortController?: AbortController;
@@ -24,6 +26,7 @@ export class TaskController {
         defaultModel: string
     ) {
         this.workspaceManager = new WorkspaceManager(_extensionContext, defaultModel, ollamaUrl);
+        this.checkpointManager = new CheckpointManager(_extensionContext);
         const ps = this.workspaceManager.getProviderState();
         this.llmService = new LLMService({
             providerId: ps.providerId,
@@ -85,6 +88,33 @@ export class TaskController {
 
     public getLLMKeyCount(): number { return this.llmService.getKeyCount(); }
 
+    // ── Auto-approve config ───────────────────────────────────────────────────
+    private autoApproveConfig: {
+        read_file: boolean;
+        write_file: boolean;
+        run_command: boolean;
+        web_fetch: boolean;
+        all: boolean;
+    } = { read_file: true, write_file: false, run_command: false, web_fetch: false, all: false };
+
+    public setAutoApproveConfig(cfg: typeof this.autoApproveConfig): void {
+        this.autoApproveConfig = { ...this.autoApproveConfig, ...cfg };
+    }
+
+    public isAutoApproved(toolName: string): boolean {
+        const c = this.autoApproveConfig;
+        if (c.all) return true;
+        const readTools  = ['read_file', 'read_multiple_files', 'list_directory', 'list_directory_tree', 'search_in_files', 'get_file_info'];
+        const writeTools = ['write_file', 'delete_file', 'create_directory', 'move_file', 'write_multiple_files', 'delete_multiple_files'];
+        const cmdTools   = ['run_command', 'kill_bg_process'];
+        const webTools   = ['web_search', 'web_fetch'];
+        if (c.read_file  && readTools.includes(toolName))  return true;
+        if (c.write_file && writeTools.includes(toolName)) return true;
+        if (c.run_command && cmdTools.includes(toolName))  return true;
+        if (c.web_fetch  && webTools.includes(toolName))   return true;
+        return false;
+    }
+
     // ── Session / History management ─────────────────────────────────────────
     private readonly SESSION_STATE_KEY = 'codai_sessions_v1';
 
@@ -132,6 +162,16 @@ export class TaskController {
             mode: meta?.mode ?? 'code',
             title: meta?.title ?? 'Chat',
         });
+    }
+
+    // ── Checkpoint public methods ─────────────────────────────────────────────
+    public async revertCheckpoint(checkpointId: string): Promise<{ success: boolean; message: string }> {
+        if (!this.checkpointManager) return { success: false, message: 'CheckpointManager not initialized' };
+        return this.checkpointManager.revertToCheckpoint(checkpointId);
+    }
+
+    public getCheckpoints(): any[] {
+        return this.checkpointManager?.getCheckpoints() ?? [];
     }
 
     public async deleteSession(sessionId: string): Promise<void> {
@@ -549,8 +589,12 @@ export class TaskController {
                     // Kurtarılamaz hata
                     continueLoop = false;
                     this.emitTurnEvent(turnRequestId, 'error', { message: msg || 'LLM request failed' });
-                    this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
-                    this.turnSequenceByRequestId.delete(turnRequestId);
+            // Emit token usage estimate after each turn
+            const tokenInfo = this.workspaceManager.estimateTokenCount();
+            this.emitTurnEvent(turnRequestId, 'tokenCount', tokenInfo);
+
+            this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
+            this.turnSequenceByRequestId.delete(turnRequestId);
                     return;
                 }
 
@@ -575,10 +619,26 @@ export class TaskController {
                         const summary = this.buildToolSummary(toolName, toolArgs);
                         const toolPhaseId = `tool-${toolCall?.id || `${iteration}-${toolName}-${startedAt}-${Math.random().toString(36).slice(2, 6)}`}`;
 
+                        const autoApproved = this.isAutoApproved(toolName);
                         this.emitTurnEvent(turnRequestId, 'toolActivityStart', {
                             phaseId: toolPhaseId, toolName, args: toolArgs,
-                            status: 'running', summary, startedAt, toolCallId: toolCall?.id
+                            status: 'running', summary, startedAt, toolCallId: toolCall?.id,
+                            autoApproved,
                         });
+
+                        // ── Checkpoint before file writes ────────────────────
+                        const WRITE_TOOLS = ['write_file', 'write_multiple_files'];
+                        if (this.checkpointManager && WRITE_TOOLS.includes(toolName)) {
+                            const filePath = toolArgs.path || toolArgs.file_path;
+                            if (typeof filePath === 'string') {
+                                const cpId = await this.checkpointManager.saveCheckpoint(filePath, toolName);
+                                if (cpId) {
+                                    this.emitTurnEvent(turnRequestId, 'checkpointSaved', {
+                                        checkpointId: cpId, filePath, toolName
+                                    });
+                                }
+                            }
+                        }
 
                         // P1 FIX: Warn AI if a bg process is already running before starting another
                         if (toolName === 'run_command' && hasRunningBgProcesses()) {

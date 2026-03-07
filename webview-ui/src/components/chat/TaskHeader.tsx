@@ -1,15 +1,16 @@
 /**
  * TaskHeader — Kilo-style sticky session header
- * Shows: session title, elapsed time, message count
+ * Shows: session title, elapsed time, message count, token usage
  */
 import { useEffect, useState } from 'react';
-import { Clock, MessageSquare } from 'lucide-react';
+import { Clock, MessageSquare, Cpu } from 'lucide-react';
 
 interface TaskHeaderProps {
   title?: string;
-  startedAt?: number;   // timestamp when current task started
+  startedAt?: number;
   isProcessing: boolean;
   messageCount: number;
+  tokenCount?: { contextTokens: number; contextChars: number } | null;
 }
 
 function useElapsed(startedAt: number | undefined, isProcessing: boolean): string | undefined {
@@ -33,7 +34,13 @@ function useElapsed(startedAt: number | undefined, isProcessing: boolean): strin
   return elapsed;
 }
 
-export function TaskHeader({ title, startedAt, isProcessing, messageCount }: TaskHeaderProps) {
+function formatTokens(n: number): string {
+  if (n < 1000) return `${n}`;
+  if (n < 10_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${Math.round(n / 1000)}k`;
+}
+
+export function TaskHeader({ title, startedAt, isProcessing, messageCount, tokenCount }: TaskHeaderProps) {
   const elapsed = useElapsed(startedAt, isProcessing);
 
   if (!title && messageCount === 0) return null;
@@ -44,6 +51,12 @@ export function TaskHeader({ title, startedAt, isProcessing, messageCount }: Tas
         {title || 'New Chat'}
       </div>
       <div className="task-header-stats">
+        {tokenCount && tokenCount.contextTokens > 0 && (
+          <span className="task-header-tokens" title={`~${tokenCount.contextTokens.toLocaleString()} tokens in context`}>
+            <Cpu size={10} />
+            {formatTokens(tokenCount.contextTokens)}
+          </span>
+        )}
         {elapsed && (
           <span className="task-header-elapsed">
             <Clock size={10} />

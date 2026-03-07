@@ -137,6 +137,7 @@ export function useVSCodeMessage() {
   const [pendingQuestions, setPendingQuestions] = useState<WizardQuestion[] | null>(null);
   const [planSaved, setPlanSaved] = useState<PlanSavedPayload | null>(null);
   const [taskDone, setTaskDone] = useState<string | null>(null);
+  const [tokenCount, setTokenCount] = useState<{ contextTokens: number; contextChars: number } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   // BUG 8 FIX: initialModel backend'den restore edilir
   const [initialModel, setInitialModel] = useState<string | null>(null);
@@ -517,6 +518,20 @@ export function useVSCodeMessage() {
           setIsStreaming(false);
           break;
 
+        // ── @ Mention resolved ──────────────────────────────────────────────
+        case 'mentionResolved':
+          // Dispatch custom event so App.tsx can inject content into input
+          window.dispatchEvent(new CustomEvent('codai:mentionResolved', { detail: msg }));
+          break;
+
+        // ── Token count estimate ─────────────────────────────────────────────
+        case 'tokenCount':
+          setTokenCount({
+            contextTokens: msg.contextTokens ?? 0,
+            contextChars: msg.contextChars ?? 0,
+          });
+          break;
+
         // ── BUG 10 FIX: Aktif dosya context yanıtı ──────────────────────
         case 'activeFileResult':
           setActiveFileContext(msg.file || null);
@@ -575,6 +590,7 @@ export function useVSCodeMessage() {
     pendingQuestions, setPendingQuestions,
     planSaved, setPlanSaved,
     taskDone, setTaskDone,
+    tokenCount,
     isStreaming,
     initialModel,
     iterationCount,

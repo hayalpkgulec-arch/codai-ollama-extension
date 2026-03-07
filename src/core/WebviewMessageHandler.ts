@@ -283,6 +283,98 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 break;
             }
 
+            // ── Checkpoint: revert file ───────────────────────────────────
+            case 'revertCheckpoint': {
+                if (typeof data.checkpointId === 'string') {
+                    const result = await controller.revertCheckpoint(data.checkpointId);
+                    webview.postMessage({ type: 'checkpointReverted', ...result });
+                }
+                break;
+            }
+
+            // ── Checkpoint: get list ──────────────────────────────────────
+            case 'getCheckpoints': {
+                const checkpoints = controller.getCheckpoints();
+                webview.postMessage({ type: 'checkpointsList', checkpoints });
+                break;
+            }
+
+            // ── @ Mention handlers ────────────────────────────────────────
+            case 'mentionPickFile': {
+                try {
+                    const uris = await vscode.window.showOpenDialog({
+                        canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+                        title: 'Select file to mention',
+                    });
+                    if (uris && uris[0]) {
+                        const uri = uris[0];
+                        const relPath = vscode.workspace.asRelativePath(uri);
+                        let content = '';
+                        try {
+                            const bytes = await vscode.workspace.fs.readFile(uri);
+                            content = new TextDecoder().decode(bytes);
+                            if (content.length > 20_000) content = content.slice(0, 20_000) + '\n... (truncated)';
+                        } catch { /* unreadable */ }
+                        webview.postMessage({ type: 'mentionResolved', mentionType: 'file', label: relPath, content });
+                    }
+                } catch (e: any) { console.error('mentionPickFile:', e); }
+                break;
+            }
+
+            case 'mentionPickFolder': {
+                try {
+                    const uris = await vscode.window.showOpenDialog({
+                        canSelectFiles: false, canSelectFolders: true, canSelectMany: false,
+                        title: 'Select folder to mention',
+                    });
+                    if (uris && uris[0]) {
+                        const relPath = vscode.workspace.asRelativePath(uris[0]);
+                        webview.postMessage({ type: 'mentionResolved', mentionType: 'folder', label: relPath, content: `[Folder: ${relPath}]` });
+                    }
+                } catch (e: any) { console.error('mentionPickFolder:', e); }
+                break;
+            }
+
+            case 'mentionGetProblems': {
+                try {
+                    const diags = vscode.languages.getDiagnostics();
+                    const lines: string[] = [];
+                    let count = 0;
+                    for (const [uri, ds] of diags) {
+                        for (const d of ds) {
+                            if (count++ > 50) break;
+                            const rel = vscode.workspace.asRelativePath(uri);
+                            const sev = d.severity === 0 ? 'Error' : d.severity === 1 ? 'Warning' : 'Info';
+                            lines.push(`${sev}: ${rel}:${d.range.start.line + 1} — ${d.message}`);
+                        }
+                    }
+                    const content = lines.length ? lines.join('\n') : 'No problems found.';
+                    webview.postMessage({ type: 'mentionResolved', mentionType: 'problems', label: 'Problems', content });
+                } catch (e: any) { console.error('mentionGetProblems:', e); }
+                break;
+            }
+
+            case 'mentionGetGitChanges': {
+                try {
+                    const wf = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                    if (!wf) { webview.postMessage({ type: 'mentionResolved', mentionType: 'git-changes', label: 'Git Changes', content: 'No workspace open.' }); break; }
+                    const { execSync } = require('child_process');
+                    let diff = '';
+                    try { diff = execSync('git diff HEAD', { cwd: wf, encoding: 'utf8', maxBuffer: 100_000 }); } catch { diff = 'No git diff available.'; }
+                    if (diff.length > 15_000) diff = diff.slice(0, 15_000) + '\n... (truncated)';
+                    webview.postMessage({ type: 'mentionResolved', mentionType: 'git-changes', label: 'Git Changes', content: diff || 'No changes.' });
+                } catch (e: any) { console.error('mentionGetGitChanges:', e); }
+                break;
+            }
+
+            // ── Auto-approve config ───────────────────────────────────────
+            case 'setAutoApprove': {
+                if (data.config && typeof data.config === 'object') {
+                    controller.setAutoApproveConfig(data.config);
+                }
+                break;
+            }
+
             // ── Chat History: save full message history for a session ─────
             case 'saveSessionHistory': {
                 if (typeof data.sessionId === 'string' && Array.isArray(data.messages)) {

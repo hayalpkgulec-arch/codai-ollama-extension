@@ -339,6 +339,9 @@ export async function runCommand(
 
         let interactiveResolve: (() => void) | null = null;
 
+        // Get terminal reference for live output streaming
+        const term = getCodaiTerminal();
+
         const onData = (chunk: Buffer, isStderr: boolean) => {
             const text = stripAnsi(chunk.toString('utf8'));
             if (isStderr) {
@@ -346,6 +349,14 @@ export async function runCommand(
             } else {
                 if (stdoutRaw.length < MAX_BYTES) stdoutRaw += text;
             }
+
+            // ── BF-2: Pipe child_process output → VSCode terminal ────────────
+            // This keeps the VSCode terminal in sync with actual process output.
+            // Each chunk is written with sendText(text, false) to avoid newline duplication.
+            if (text.trim()) {
+                try { term.sendText(text.trimEnd(), false); } catch { /* terminal closed */ }
+            }
+
             // isHot logic (Cline'dan)
             isHot = true;
             if (hotTimer) clearTimeout(hotTimer);

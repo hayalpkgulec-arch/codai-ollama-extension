@@ -9,7 +9,7 @@ import {
   XCircle, ChevronsUpDown, Copy, Folder, Trash2,
   Move, Search, Stethoscope, Globe, Code2,
   FolderPlus, Info, Replace, RefreshCw, Files, FolderTree, Layers,
-  ExternalLink, GitCompare, Send,
+  ExternalLink, GitCompare, Send, Quote,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -779,9 +779,10 @@ export interface AssistantMessageProps {
   decisions: ProposalDecisions;
   onDecide: (phaseId: string, decision: 'accepted' | 'rejected', proposalId: string) => void;
   onRetry?: () => void;
+  onQuote?: (text: string) => void;
 }
 
-export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry }: AssistantMessageProps) => {
+export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry, onQuote }: AssistantMessageProps) => {
   const hasAnyContent = msg.segments.length > 0 || msg.error;
   const isWaitingForOutput = msg.isStreaming && !hasAnyContent;
 
@@ -831,7 +832,6 @@ export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry }: Ass
         <div className="err-pill">
           <AlertCircle size={12} />
           <span>{msg.error}</span>
-          {/* BUG 13 FIX: Retry butonu */}
           {onRetry && (
             <button className="retry-btn" onClick={onRetry} title="Retry">
               <RefreshCw size={11} /> Retry
@@ -839,12 +839,38 @@ export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry }: Ass
           )}
         </div>
       )}
+
+      {/* Quote button — shown when message has text content */}
+      {onQuote && msg.segments.some(s => s.type === 'content' && s.text?.trim()) && (
+        <button
+          className="msg-quote-btn"
+          onClick={() => {
+            const text = msg.segments
+              .filter(s => s.type === 'content')
+              .map(s => (s as any).text || '')
+              .join('\n')
+              .trim();
+            if (text) onQuote(text);
+          }}
+          title="Quote this message"
+        >
+          <Quote size={10} />
+          <span>Quote</span>
+        </button>
+      )}
     </div>
   );
 });
 AssistantMessage.displayName = 'AssistantMessage';
 
-export const UserMessage = memo(({ content }: { content: string }) => (
-  <div className="user-bubble">{content}</div>
+export const UserMessage = memo(({ content, onQuote }: { content: string; onQuote?: (t: string) => void }) => (
+  <div className="user-bubble">
+    <span>{content}</span>
+    {onQuote && content.trim() && (
+      <button className="msg-quote-btn msg-quote-btn--user" onClick={() => onQuote(content)} title="Quote">
+        <Quote size={10} />
+      </button>
+    )}
+  </div>
 ));
 UserMessage.displayName = 'UserMessage';

@@ -1,5 +1,14 @@
 export type AgentMode = 'code' | 'plan' | 'chat';
 
+// ── Auto-approve config ───────────────────────────────────────────────────────
+export interface AutoApproveConfig {
+  read_file: boolean;
+  write_file: boolean;
+  run_command: boolean;
+  web_fetch: boolean;
+  all: boolean;
+}
+
 // ── Chat History ──────────────────────────────────────────────────────────────
 export interface SessionInfo {
   id: string;

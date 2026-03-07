@@ -11,6 +11,10 @@ import { PlanReadyCard } from './components/plan/PlanReadyCard';
 import { ChatHistoryPanel } from './components/history/ChatHistoryPanel';
 import { TaskHeader } from './components/chat/TaskHeader';
 import { WorkingIndicator, ScrollToBottomButton } from './components/chat/WorkingIndicator';
+import { QuotedMessagePreview } from './components/chat/QuotedMessagePreview';
+import { ContextMenu } from './components/chat/ContextMenu';
+import { SlashCommandMenu } from './components/chat/SlashCommandMenu';
+import type { SlashCommand } from './components/chat/SlashCommandMenu';
 import { ProviderSettings } from './components/settings/ProviderSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
 import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare, Bot } from 'lucide-react';
@@ -43,6 +47,7 @@ export default function App() {
     pendingQuestions, setPendingQuestions,
     planSaved, setPlanSaved,
     taskDone, setTaskDone,
+    tokenCount,
     isStreaming,
     initialModel,
     iterationCount,
@@ -74,6 +79,14 @@ export default function App() {
   const [taskStartedAt, setTaskStartedAt] = useState<number | undefined>(undefined);
   // Scroll-to-bottom
   const [userScrolled, setUserScrolled] = useState(false);
+  // Quote
+  const [quotedText, setQuotedText] = useState<string | null>(null);
+  // @ Mention context menu
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  // / Slash command menu
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
 
   // ── History ────────────────────────────────────────────────────────────────
   const {
@@ -116,6 +129,28 @@ export default function App() {
   useEffect(() => { vscode.postMessage({ type: 'ready' }); }, []);
 
   useEffect(() => { if (todoItems) setPlanClosed(false); }, [todoItems]);
+
+  // ── @ Mention resolved event ─────────────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      const { label, content, mentionType } = detail;
+      // Build context block and inject into input
+      const block = mentionType === 'file'
+        ? `[Context: ${label}]\n\`\`\`\n${content}\n\`\`\`\n`
+        : `[${label}]\n${content}\n`;
+      setInput(prev => {
+        // Remove trailing @<query> from input
+        const cleaned = prev.replace(/@\w*$/, '');
+        return cleaned + block;
+      });
+      setMentionMenuOpen(false);
+      textareaRef.current?.focus();
+    };
+    window.addEventListener('codai:mentionResolved', handler);
+    return () => window.removeEventListener('codai:mentionResolved', handler);
+  }, []);
 
   // ── Persist conversation to backend whenever messages change ─────────────
   // Debounced so we don't spam on every streaming chunk
@@ -174,6 +209,12 @@ export default function App() {
   const send = useCallback(() => {
     if (!input.trim() || isProcessing) return;
     let finalMessage = input.trim();
+    // Prepend quote if any
+    if (quotedText) {
+      const quoted = quotedText.split('\n').map(l => `> ${l}`).join('\n');
+      finalMessage = `${quoted}\n\n${finalMessage}`;
+      setQuotedText(null);
+    }
     // Aktif dosya context eklenmişse mesajın önüne yap
     if (activeFileContext) {
       const ctx = `[Context: ${activeFileContext.path}]\n\`\`\`${activeFileContext.language}\n${activeFileContext.content}\n\`\`\`\n\n`;
@@ -205,9 +246,28 @@ export default function App() {
   };
 
   const onInput = (e: ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
+    const val = e.target.value;
+    setInput(val);
     e.target.style.height = 'auto';
     e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+    // @ mention detection
+    const atMatch = val.match(/@(\w*)$/);
+    if (atMatch) {
+      setMentionMenuOpen(true);
+      setMentionQuery(atMatch[1] || '');
+      setSlashMenuOpen(false);
+    } else {
+      setMentionMenuOpen(false);
+    }
+    // / slash command detection — only at start of input
+    const slashMatch = val.match(/^\/(\w*)$/);
+    if (slashMatch) {
+      setSlashMenuOpen(true);
+      setSlashQuery(slashMatch[1] || '');
+      setMentionMenuOpen(false);
+    } else {
+      setSlashMenuOpen(false);
+    }
   };
 
   const handleStop = () => vscode.postMessage({ type: 'abortTask' });
@@ -441,6 +501,7 @@ export default function App() {
           startedAt={taskStartedAt}
           isProcessing={isProcessing}
           messageCount={messages.length}
+          tokenCount={tokenCount}
         />
       )}
 
@@ -505,6 +566,49 @@ export default function App() {
         </div>
       )}
 
+      {/* ── / Slash command menu ── */}
+      {slashMenuOpen && !isProcessing && (
+        <SlashCommandMenu
+          query={slashQuery}
+          onClose={() => setSlashMenuOpen(false)}
+          onSelect={(cmd: SlashCommand) => {
+            setSlashMenuOpen(false);
+            setInput('');
+            switch (cmd.builtinKey) {
+              case 'new':   handleClear(); break;
+              case 'clear': handleClear(); break;
+              case 'mode:code': handleModeChange(MODES.find(m => m.id === 'code')!); break;
+              case 'mode:plan': handleModeChange(MODES.find(m => m.id === 'plan')!); break;
+              case 'mode:chat': handleModeChange(MODES.find(m => m.id === 'chat')!); break;
+              case 'compact':
+                vscode.postMessage({ type: 'sendMessage', message: 'Summarize and compress the conversation context to save tokens. Keep only essential information.' });
+                break;
+            }
+          }}
+        />
+      )}
+
+      {/* ── @ Mention context menu ── */}
+      {mentionMenuOpen && !isProcessing && (
+        <ContextMenu
+          query={mentionQuery}
+          onSelect={(insertion) => {
+            setInput(prev => prev.replace(/@\w*$/, insertion));
+            setMentionMenuOpen(false);
+            textareaRef.current?.focus();
+          }}
+          onClose={() => setMentionMenuOpen(false)}
+        />
+      )}
+
+      {/* ── Quoted message preview ── */}
+      {quotedText && (
+        <QuotedMessagePreview
+          text={quotedText}
+          onRemove={() => setQuotedText(null)}
+        />
+      )}
+
       {/* ── Active file context pill ── */}
       {activeFileContext && (
         <div className="context-pill">
@@ -552,16 +656,18 @@ export default function App() {
             {visible.map((msg) => (
               <div key={msg.id} className={`msg-row ${msg.role}`}>
                 {msg.role === 'user'
-                  ? <UserMessage content={msg.segments.find(s => s.type === 'content')?.text ?? ''} />
+                  ? <UserMessage
+                      content={msg.segments.find(s => s.type === 'content')?.text ?? ''}
+                      onQuote={(t) => { setQuotedText(t); textareaRef.current?.focus(); }}
+                    />
                   : (
-                    <>
-                      <AssistantMessage
-                        msg={msg}
-                        decisions={decisions}
-                        onDecide={onDecide}
-                        onRetry={msg.error ? handleRetry : undefined}
-                      />
-                    </>
+                    <AssistantMessage
+                      msg={msg}
+                      decisions={decisions}
+                      onDecide={onDecide}
+                      onRetry={msg.error ? handleRetry : undefined}
+                      onQuote={(t) => { setQuotedText(t); textareaRef.current?.focus(); }}
+                    />
                   )}
               </div>
             ))}
