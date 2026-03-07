@@ -1054,6 +1054,16 @@ body,
     border-color: rgba(180, 140, 255, 0.25);
 }
 
+/* bg-mode = auto-detected background (dev server etc.) */
+.term-card.bg-mode {
+    border-color: rgba(180, 140, 255, 0.25);
+}
+
+/* interrupted = user sent Ctrl+C */
+.term-card.interrupted {
+    border-color: rgba(255, 200, 80, 0.25);
+}
+
 /* Header */
 .term-header {
     display: flex;
@@ -1132,6 +1142,62 @@ body,
     background: rgba(180, 140, 255, 0.1);
     color: #b48cff;
     border: 1px solid rgba(180, 140, 255, 0.2);
+}
+
+.term-badge.interrupted {
+    background: rgba(255, 200, 80, 0.1);
+    color: #ffc850;
+    border: 1px solid rgba(255, 200, 80, 0.25);
+}
+
+/* ── Stop button on terminal card ─────────────────────────────────── */
+.term-stop-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    border: 1px solid rgba(244, 135, 113, 0.3);
+    background: rgba(244, 135, 113, 0.08);
+    color: #f48771;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    flex-shrink: 0;
+}
+.term-stop-btn:hover {
+    background: rgba(244, 135, 113, 0.16);
+    border-color: rgba(244, 135, 113, 0.5);
+}
+.term-stop-btn.inline {
+    padding: 0px 5px;
+    font-size: 9.5px;
+}
+
+/* ── Running indicator bar ──────────────────────────────────────────── */
+.term-running-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: rgba(79, 156, 222, 0.8);
+    background: rgba(79, 156, 222, 0.04);
+    border-bottom: 1px solid rgba(79, 156, 222, 0.08);
+}
+
+/* ── Background process banner ──────────────────────────────────────── */
+.term-bg-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 10px;
+    font-size: 11px;
+    color: rgba(180, 140, 255, 0.8);
+    background: rgba(180, 140, 255, 0.04);
+    border-bottom: 1px solid rgba(180, 140, 255, 0.08);
 }
 
 /* Body / Output */

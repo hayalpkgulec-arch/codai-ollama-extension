@@ -3,18 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { TaskController } from './TaskController';
 import { DiffViewProvider } from '../integrations/DiffViewProvider';
-
-// ── Shared VSCode terminal used by AI commands ─────────────────────────────
-let _sharedTerminal: vscode.Terminal | undefined;
-function getSharedTerminal(): vscode.Terminal {
-    if (!_sharedTerminal || _sharedTerminal.exitStatus !== undefined) {
-        _sharedTerminal = vscode.window.createTerminal({
-            name: 'CodAI',
-            iconPath: new vscode.ThemeIcon('sparkle'),
-        });
-    }
-    return _sharedTerminal;
-}
+import { getCodaiTerminal, killBackgroundProcess } from '../tools/impl/RunCommandTool';
 
 export function setupWebviewMessageHandler(webview: vscode.Webview, controller: TaskController) {
     webview.onDidReceiveMessage(async (data) => {
@@ -65,13 +54,27 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 controller.abortCurrentTask();
                 break;
 
-            // ── Terminal: AI command → VSCode integrated terminal ─────────
+            // ── Terminal: open/run in VSCode integrated terminal ──────────
             case 'runInTerminal': {
+                const term = getCodaiTerminal();
+                term.show(true);
                 if (typeof data.command === 'string' && data.command) {
-                    const term = getSharedTerminal();
-                    term.show(true); // preserveFocus=true
                     term.sendText(data.command, true);
                 }
+                break;
+            }
+
+            // ── Kill background process (e.g. dev server) ─────────────────
+            case 'killBgProcess': {
+                if (typeof data.bgId === 'string') {
+                    killBackgroundProcess(data.bgId);
+                }
+                // Also send Ctrl+C to the shared terminal in case it's running there
+                try {
+                    const term = getCodaiTerminal();
+                    term.show(true);
+                    term.sendText('\x03', false); // Ctrl+C
+                } catch { /* ignore */ }
                 break;
             }
 
