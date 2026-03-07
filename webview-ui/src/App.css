@@ -1026,42 +1026,217 @@ body,
     background: #f48771;
 }
 
-/* ── Terminal Output (smart expand) ─────────────────────── */
-.terminal-output-wrap {
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-    background: #0d0d0d;
-}
+/* ══════════════════════════════════════════════════════════════
+   TERMINAL CARD — full rewrite
+   ══════════════════════════════════════════════════════════════ */
 
-.terminal-output {
-    padding: 9px 13px 6px;
+.term-card {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: #111113;
+    margin: 2px 0;
+    font-family: var(--vscode-editor-font-family, 'Cascadia Code', 'Fira Code', monospace);
+}
+
+.term-card.running {
+    border-color: rgba(79, 156, 222, 0.35);
+    box-shadow: 0 0 0 1px rgba(79, 156, 222, 0.08);
+}
+
+.term-card.error {
+    border-color: rgba(244, 135, 113, 0.3);
+}
+
+.term-card.background {
+    border-color: rgba(180, 140, 255, 0.25);
+}
+
+/* Header */
+.term-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: #161618;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    min-height: 30px;
+    gap: 8px;
+}
+
+.term-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.term-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.term-icon {
+    display: flex;
+    align-items: center;
+    color: rgba(126, 200, 160, 0.7);
+    flex-shrink: 0;
+}
+
+.term-cmd {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--vscode-foreground, #d4d4d4);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.term-dur {
+    font-size: 10px;
+    color: var(--vscode-descriptionForeground, #555);
+    font-variant-numeric: tabular-nums;
+    font-family: inherit;
+}
+
+.term-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 7px;
+    border-radius: 20px;
+    font-family: inherit;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+}
+
+.term-badge.exit.ok {
+    background: rgba(115, 201, 145, 0.12);
+    color: #73c991;
+    border: 1px solid rgba(115, 201, 145, 0.2);
+}
+
+.term-badge.exit.fail {
+    background: rgba(244, 135, 113, 0.12);
+    color: #f48771;
+    border: 1px solid rgba(244, 135, 113, 0.2);
+}
+
+.term-badge.background {
+    background: rgba(180, 140, 255, 0.1);
+    color: #b48cff;
+    border: 1px solid rgba(180, 140, 255, 0.2);
+}
+
+/* Body / Output */
+.term-body {
+    display: flex;
+    flex-direction: column;
+    background: #0e0e10;
+}
+
+.term-output {
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
     scroll-behavior: smooth;
+    padding: 7px 0 5px;
 }
 
-.terminal-output.limited {
-    max-height: 80px;
-}
-
-.terminal-output.full-expand {
-    max-height: 380px;
-}
-
-.terminal-output.auto-show {
+.term-output.auto {
     max-height: none;
 }
 
-.terminal-output::-webkit-scrollbar {
-    width: 3px;
+.term-output.collapsed {
+    max-height: 160px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
 }
 
-.terminal-output::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.08);
+.term-output.expanded {
+    max-height: 420px;
+}
+
+.term-output::-webkit-scrollbar { width: 3px; }
+.term-output::-webkit-scrollbar-track { background: transparent; }
+.term-output::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.08);
     border-radius: 2px;
 }
 
+/* Lines */
+.term-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    padding: 0 12px;
+    line-height: 1.65;
+    font-size: 11.5px;
+}
+
+.term-gutter {
+    width: 16px;
+    flex-shrink: 0;
+    font-size: 10px;
+    user-select: none;
+    text-align: center;
+}
+
+.term-text {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-all;
+    min-width: 0;
+}
+
+/* Line types */
+.term-line.prompt .term-gutter { color: rgba(126, 200, 160, 0.6); }
+.term-line.prompt .term-text   { color: rgba(126, 200, 160, 0.9); font-weight: 500; }
+
+.term-line.stdout .term-gutter { color: transparent; }
+.term-line.stdout .term-text   { color: #c8c8c8; }
+
+.term-line.stderr .term-gutter { color: rgba(240, 128, 112, 0.6); }
+.term-line.stderr .term-text   { color: #f08070; }
+
+.term-line.truncated .term-gutter { color: transparent; }
+.term-line.truncated .term-text   {
+    color: var(--vscode-descriptionForeground, #555);
+    font-style: italic;
+    font-size: 10.5px;
+}
+
+/* Expand button */
+.term-expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 100%;
+    padding: 5px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    color: var(--vscode-descriptionForeground, #666);
+    font-size: 10.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    letter-spacing: 0.1px;
+}
+
+.term-expand-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--vscode-foreground, #c0c0c0);
+}
+
+/* Keep old expand-handle for backward compat */
 .expand-handle {
     display: flex;
     align-items: center;
@@ -1079,40 +1254,20 @@ body,
     transition: background 0.15s, color 0.15s;
     letter-spacing: 0.1px;
 }
-
 .expand-handle:hover {
     background: rgba(255, 255, 255, 0.06);
     color: var(--vscode-foreground, #c0c0c0);
 }
 
-.terminal-prompt {
-    font-family: var(--vscode-editor-font-family, 'Cascadia Code', monospace);
-    font-size: 11.5px;
-    color: rgba(126, 200, 160, 0.85);
-    user-select: none;
-    letter-spacing: 0.1px;
-    margin-bottom: 3px;
-}
-
-.terminal-stdout {
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11.5px;
-    color: #c8c8c8;
-    white-space: pre-wrap;
-    word-break: break-all;
-    margin: 0;
-    line-height: 1.6;
-}
-
-.terminal-stderr {
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11.5px;
-    color: #f08070;
-    white-space: pre-wrap;
-    word-break: break-all;
-    margin: 0;
-    line-height: 1.6;
-}
+/* Old terminal classes kept for compat */
+.terminal-output-wrap { border-top: 1px solid rgba(255,255,255,0.05); background: #0d0d0d; }
+.terminal-output { padding: 9px 13px 6px; display: flex; flex-direction: column; gap: 3px; overflow-y: auto; }
+.terminal-output.limited { max-height: 80px; }
+.terminal-output.full-expand { max-height: 380px; }
+.terminal-output.auto-show { max-height: none; }
+.terminal-prompt { font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; color: rgba(126,200,160,0.85); }
+.terminal-stdout { font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; color: #c8c8c8; white-space: pre-wrap; word-break: break-all; margin: 0; }
+.terminal-stderr { font-family: var(--vscode-editor-font-family, monospace); font-size: 11.5px; color: #f08070; white-space: pre-wrap; word-break: break-all; margin: 0; }
 
 /* ── File / Read preview ─────────────────────────────── */
 .file-preview-wrapper {

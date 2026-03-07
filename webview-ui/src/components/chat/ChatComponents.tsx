@@ -193,47 +193,107 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
   const dur = tool.startedAt && tool.finishedAt ? tool.finishedAt - tool.startedAt : null;
   let parsed: any = null;
   try { if (tool.result?.trim().startsWith('{')) parsed = JSON.parse(tool.result); } catch { /* */ }
-  const stdout: string = parsed?.stdout?.trim() || '';
-  const stderr: string = parsed?.stderr?.trim() || '';
-  const combined = [stdout, stderr].filter(Boolean).join('\n');
-  const lineCount = combined ? combined.split('\n').length : 0;
-  const AUTO_SHOW = 5;
+
+  const stdout: string = parsed?.stdout?.trimEnd() || '';
+  const stderr: string = parsed?.stderr?.trimEnd() || '';
+  const stdoutLines = stdout ? stdout.split('\n') : [];
+  const stderrLines = stderr ? stderr.split('\n') : [];
+  const allLines = [...stdoutLines, ...stderrLines];
+  const lineCount = allLines.length;
+
+  const PREVIEW_LINES = 8;
   const [expanded, setExpanded] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (outputRef.current && !expanded) outputRef.current.scrollTop = outputRef.current.scrollHeight;
-  }, [combined, expanded]);
+  const cmdLabel = (parsed?.command || tool.summary || '').replace(/^(Run:|run:)\s*/i, '');
+  const exitCode: number | null = parsed?.exitCode ?? null;
+  const exitOk = exitCode === null || exitCode === 0;
+  const isBackground = Boolean(parsed?.background);
+  const isTruncated = Boolean(parsed?.truncated);
+  const pid = parsed?.pid;
 
-  const cmdLabel = parsed?.command || tool.summary;
-  const exitOk = !parsed?.exitCode || parsed.exitCode === 0;
-  const hasOutput = tool.status !== 'running' && combined;
+  // Auto-scroll to bottom while output grows
+  useEffect(() => {
+    if (outputRef.current && !expanded) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [stdout, stderr, expanded]);
+
+  const hasOutput = (stdout || stderr) && tool.status !== 'running';
+  const showExpander = hasOutput && lineCount > PREVIEW_LINES;
 
   return (
-    <div className={`card card-terminal ${tool.status}`}>
-      <div className="card-header non-clickable">
-        <StatusDot status={tool.status} />
-        <Terminal size={11} className="card-icon-type" />
-        <span className="card-label card-filename">
-          {tool.status === 'running' ? <TypewriterText text={cmdLabel} speed={18} /> : cmdLabel}
-        </span>
-        {dur != null && <span className="card-dur">{fmtDur(dur)}</span>}
-        {parsed?.exitCode != null && (
-          <span className={`exit-badge ${exitOk ? 'ok' : 'fail'}`}>exit {parsed.exitCode}</span>
-        )}
+    <div className={`term-card ${tool.status}${isBackground ? ' background' : ''}`}>
+      {/* ── Header ── */}
+      <div className="term-header">
+        <div className="term-header-left">
+          <StatusDot status={tool.status} />
+          <span className="term-icon"><Terminal size={11} /></span>
+          <span className="term-cmd">
+            {tool.status === 'running'
+              ? <TypewriterText text={cmdLabel} speed={16} />
+              : cmdLabel}
+          </span>
+        </div>
+        <div className="term-header-right">
+          {isBackground && tool.status === 'done' && (
+            <span className="term-badge background">
+              background{pid ? ` · pid ${pid}` : ''}
+            </span>
+          )}
+          {exitCode !== null && (
+            <span className={`term-badge exit ${exitOk ? 'ok' : 'fail'}`}>
+              exit {exitCode}
+            </span>
+          )}
+          {dur != null && <span className="term-dur">{fmtDur(dur)}</span>}
+        </div>
       </div>
+
+      {/* ── Output body ── */}
       {hasOutput && (
-        <div className="terminal-output-wrap">
+        <div className="term-body">
           <div
             ref={outputRef}
-            className={`terminal-output ${lineCount <= AUTO_SHOW ? 'auto-show' : expanded ? 'full-expand' : 'limited'}`}
+            className={`term-output ${expanded ? 'expanded' : showExpander ? 'collapsed' : 'auto'}`}
           >
-            <div className="terminal-prompt">$ {cmdLabel}</div>
-            {stdout && <pre className="terminal-stdout">{stdout}</pre>}
-            {stderr && <pre className="terminal-stderr">{stderr}</pre>}
+            {/* Prompt line */}
+            <div className="term-line prompt">
+              <span className="term-gutter">$</span>
+              <span className="term-text">{cmdLabel}</span>
+            </div>
+
+            {/* stdout lines */}
+            {stdoutLines.map((line, i) => (
+              <div key={`o${i}`} className="term-line stdout">
+                <span className="term-gutter" />
+                <span className="term-text">{line || '\u00a0'}</span>
+              </div>
+            ))}
+
+            {/* stderr lines */}
+            {stderrLines.map((line, i) => (
+              <div key={`e${i}`} className="term-line stderr">
+                <span className="term-gutter">!</span>
+                <span className="term-text">{line || '\u00a0'}</span>
+              </div>
+            ))}
+
+            {/* Truncation notice */}
+            {isTruncated && (
+              <div className="term-line truncated">
+                <span className="term-gutter" />
+                <span className="term-text">… output truncated</span>
+              </div>
+            )}
           </div>
-          {lineCount > AUTO_SHOW && (
-            <ExpandHandle expanded={expanded} lineCount={lineCount} onToggle={() => setExpanded(e => !e)} />
+
+          {/* Expand/collapse handle */}
+          {showExpander && (
+            <button className="term-expand-btn" onClick={() => setExpanded(e => !e)}>
+              <ChevronsUpDown size={10} />
+              {expanded ? 'Show less' : `Show all ${lineCount} lines`}
+            </button>
           )}
         </div>
       )}
@@ -251,8 +311,6 @@ interface WriteFileCardProps {
 
 const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) => {
   const dur = tool.startedAt && tool.finishedAt ? tool.finishedAt - tool.startedAt : null;
-  // BUG 9 FIX: diff başlangıçta collapsed, user expand edebilir
-  const [diffOpen, setDiffOpen] = useState(false);
   let parsed: any = null;
   try { if (tool.result?.trim().startsWith('{')) parsed = JSON.parse(tool.result); } catch { /* */ }
   const isEdit = parsed?.mode === 'editing';
@@ -272,11 +330,15 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
   const liveContent: string | null = tool.status === 'running' && tool.args?.content
     ? (tool.args.content as string) : null;
 
-  // BUG 1 FIX: proposalId = phaseId (her zaman unique), dosya yolu değil
   const proposalId = tool.phaseId;
   const isDecided = !!decision;
-  const hasDiff = (parsed?.hunks?.length > 0) || !!parsed?.preview;
+  const hasHunks = parsed?.hunks?.length > 0;
+  const hasPreview = !!parsed?.preview;
+  const hasDiff = hasHunks || hasPreview;
   const diffLineCount = parsed?.hunks?.length || 0;
+
+  // Diff default açık: yeni dosyalarda preview, edit'lerde diff her zaman başta görünür
+  const [diffOpen, setDiffOpen] = useState(true);
 
   return (
     <div className={`card card-file ${tool.status}${decision ? ` change-${decision}` : ''}`}>
@@ -301,7 +363,6 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
         {decision === 'accepted' && <span className="change-badge accepted"><CheckCheck size={10} /> Accepted</span>}
         {decision === 'rejected' && <span className="change-badge rejected"><XCircle size={10} /> Rejected</span>}
         {dur != null && <span className="card-dur">{fmtDur(dur)}</span>}
-        {/* BUG 9 FIX: Diff toggle butonu */}
         {hasDiff && tool.status !== 'running' && !isDecided && (
           <button
             className="diff-toggle-btn"
@@ -317,11 +378,11 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
       {/* Live preview while writing */}
       {liveContent && <LiveCodePreview content={liveContent} lang={lang} />}
 
-      {/* Diff — collapsible, opens on toggle */}
+      {/* Diff/preview — default açık */}
       {!liveContent && tool.status !== 'running' && !isDecided && hasDiff && (
         <CollapsibleBody open={diffOpen}>
           <div className="file-diff-container">
-            {parsed?.hunks?.length > 0 ? (
+            {hasHunks ? (
               <div className="diff-lines">
                 {(parsed.hunks as any[]).map((h: any, i: number) => (
                   <div key={i} className={`diff-line ${h.type}`}>
@@ -331,7 +392,7 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
                   </div>
                 ))}
               </div>
-            ) : parsed?.preview ? (
+            ) : hasPreview ? (
               <LiveCodePreview content={parsed.preview as string} lang={lang} />
             ) : null}
           </div>
@@ -641,6 +702,12 @@ export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry }: Ass
   const hasAnyContent = msg.segments.length > 0 || msg.error;
   const isWaitingForOutput = msg.isStreaming && !hasAnyContent;
 
+  // Mesajda hiç tool var mı? Varsa content segmentlerini gösterme kuralı:
+  // - Tool'lar running iken aradaki content segmentleri gizlenir
+  // - Sadece son content (finalResponse) ve thinking gösterilir
+  const hasTools = msg.segments.some(s => s.type === 'tool');
+  const hasRunningTools = msg.segments.some(s => s.type === 'tool' && s.tool.status === 'running');
+
   return (
     <div className="asst-body">
       {msg.segments.map((seg, i) => {
@@ -648,6 +715,16 @@ export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry }: Ass
           return <ThinkingBlock key={i} seg={seg} />;
         }
         if (seg.type === 'content') {
+          // Tool'lar varken ara content segmentlerini gizle — sadece son content'i göster
+          if (hasTools) {
+            // Son content segmenti mi? (sonraki segment yok veya sonraki de content)
+            const nextSeg = msg.segments[i + 1];
+            const isLastContent = !nextSeg || nextSeg.type !== 'tool';
+            // Running tool varsa hiçbir content gösterme
+            if (hasRunningTools) return null;
+            // Running tool yoksa sadece son content'i göster
+            if (!isLastContent) return null;
+          }
           return <ContentBlock key={i} seg={seg} isLast={i === msg.segments.length - 1} />;
         }
         if (seg.type === 'tool') {
