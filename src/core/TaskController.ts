@@ -281,9 +281,12 @@ export class TaskController {
             await this.workspaceManager.persistState();
 
             let continueLoop = true;
-            let maxIterations = 12;
+            // Plan modunda daha uzun iterasyon — her adım için ekstra tur gerekebilir
+            const isPlanMode = this.workspaceManager.getMode() === 'plan';
+            let maxIterations = isPlanMode ? 40 : 12;
             let iteration = 0;
             let activePhaseId = `pre-${turnRequestId}`;
+            let taskNotesCalledThisLoop = false;  // plan devam tracking
 
                     const MAX_RATE_LIMIT_RETRIES = 4;
 
@@ -426,9 +429,24 @@ export class TaskController {
                                 toolArgs.todos,
                                 typeof toolArgs.summary === 'string' ? toolArgs.summary : ''
                             );
+                            taskNotesCalledThisLoop = true;
+                            // Backend-driven todo update — frontend'e gönder
+                            this.emitTurnEvent(turnRequestId, 'todoUpdate', {
+                                todos: toolArgs.todos,
+                                summary: toolArgs.summary || ''
+                            });
                         }
 
-                        const STOP_TOOLS = ['ask_followup_question', 'attempt_completion'];
+                        if (toolName === 'attempt_completion') {
+                            // Görev tamamlandı — frontend'e bildir
+                            this.emitTurnEvent(turnRequestId, 'taskComplete', {
+                                result: toolArgs.result || toolArgs.summary || 'Task complete.'
+                            });
+                            continueLoop = false;
+                            break;
+                        }
+
+                        const STOP_TOOLS = ['ask_followup_question'];
                         if (STOP_TOOLS.includes(toolName)) {
                             continueLoop = false;
                             break;
@@ -440,7 +458,28 @@ export class TaskController {
                     this.workspaceManager.appendToHistory({ role: 'assistant', content: finalContent });
                     this.emitTurnEvent(turnRequestId, 'finalResponse', { content: finalContent });
                     await this.workspaceManager.persistState();
-                    continueLoop = false;
+
+                    // Plan modunda: eğer todos'da hâlâ tamamlanmamış adım varsa → devam et
+                    if (isPlanMode) {
+                        const currentTodos = this.workspaceManager.getPlanTodos();
+                        const hasUnfinished = currentTodos
+                            .split('\n')
+                            .some(line => line.trim().startsWith('- [ ]'));
+
+                        if (hasUnfinished && taskNotesCalledThisLoop) {
+                            // Tamamlanmamış adım var — modeli devam ettir
+                            this.workspaceManager.appendToHistory({
+                                role: 'user',
+                                content: 'Continue with the next step in the plan.'
+                            });
+                            taskNotesCalledThisLoop = false;
+                            // continueLoop = true kalır, bir sonraki iterasyona geç
+                        } else {
+                            continueLoop = false;
+                        }
+                    } else {
+                        continueLoop = false;
+                    }
                 }
             }
 
