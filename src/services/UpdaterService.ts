@@ -170,12 +170,39 @@ export class UpdaterService {
 
     private installVsix(vsixPath: string): Promise<void> {
         return new Promise((resolve, reject) => {
-            // VS Code CLI yolu
-            const codeExe = process.platform === 'win32' ? 'code.cmd' : 'code';
-            execFile(codeExe, ['--install-extension', vsixPath, '--force'], (err) => {
-                if (err) reject(err);
-                else resolve();
+            // process.execPath → VSCodium'da "codium", VS Code'da "code" binary'si
+            // Örnek: /usr/share/codium/codium  veya  C:\...\VSCodium\VSCodium.exe
+            // --install-extension CLI flag'i her ikisinde de aynı şekilde çalışır
+            const execPath = process.execPath;
+
+            execFile(execPath, ['--install-extension', vsixPath, '--force'], (err) => {
+                if (err) {
+                    // Fallback: codium / code komutlarını PATH'te ara
+                    const candidates = process.platform === 'win32'
+                        ? ['codium.cmd', 'code.cmd', 'codium', 'code']
+                        : ['codium', 'code'];
+                    this.tryExecCandidates(candidates, vsixPath, resolve, reject);
+                } else {
+                    resolve();
+                }
             });
+        });
+    }
+
+    private tryExecCandidates(
+        candidates: string[],
+        vsixPath: string,
+        resolve: () => void,
+        reject: (err: Error) => void
+    ): void {
+        if (candidates.length === 0) {
+            reject(new Error('No suitable VS Code / VSCodium CLI found. Please restart manually.'));
+            return;
+        }
+        const [current, ...rest] = candidates;
+        execFile(current, ['--install-extension', vsixPath, '--force'], (err) => {
+            if (err) this.tryExecCandidates(rest, vsixPath, resolve, reject);
+            else resolve();
         });
     }
 

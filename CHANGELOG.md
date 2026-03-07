@@ -1,0 +1,54 @@
+# Changelog
+
+## [0.0.6] - 2026-03-07
+### Fixed
+- Auto-updater now works on VSCodium (`process.execPath` used instead of hardcoded `code` CLI)
+- Fallback CLI candidates: `codium`, `code`, `codium.cmd`, `code.cmd`
+
+### Added
+- README with feature overview, provider table and usage guide
+- CHANGELOG
+
+---
+
+## [0.0.5] - 2026-03-07
+### Added
+- Auto-updater test release
+
+---
+
+## [0.0.4] - 2026-03-07
+### Added
+- **Auto-updater**: checks GitHub Releases every 30 minutes, downloads and installs new versions automatically
+- **Multi-key rotation**: add multiple API keys per provider; on rate limit, instantly rotates to the next key — no waiting
+- Exponential backoff for rate limits: 15s → 30s → 60s → 120s (used only when all keys are exhausted)
+- Provider Settings: model list auto-fetched from API on open; static list used only as fallback
+
+### Fixed
+- `Cannot read properties of undefined (reading 'signal')` crash in `fetchModels`
+- Gemini model IDs updated to current API-supported names
+
+---
+
+## [0.0.3] - 2026-03-06
+### Added
+- `read_multiple_files` tool: read N files in a single LLM turn
+- `list_directory_tree` tool: recursive directory listing in a single turn
+- System prompt: batch/parallel tool call instructions to reduce API round-trips
+- Rate limit retry with exponential backoff
+
+---
+
+## [0.0.2] - 2026-03-05
+### Added
+- Multi-provider support: Ollama, Google Gemini, OpenRouter, Groq, Cerebras, Mistral, Custom
+- Provider Settings UI with model picker and API key management
+- Plan mode with task list panel
+- Streaming responses with thinking block support
+- Tool execution: `read_file`, `write_file`, `list_files`, `run_command`, `grep_code`, `web_fetch`
+
+---
+
+## [0.0.1] - 2026-03-04
+### Added
+- Initial release: Ollama-based chat assistant in VS Code sidebar
