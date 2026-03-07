@@ -2,12 +2,14 @@ import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { MarkdownRenderer } from '../../MarkdownRenderer';
 import type { ToolCall, ToolStatus, ChatMessage, ThinkingSegment, ContentSegment } from '../../types';
 import type { ProposalDecisions } from '../../App';
+import { vscode } from '../../vscode';
 import {
   ChevronDown, Check, Loader2, Terminal,
   FileEdit, FileSearch, AlertCircle, CheckCheck,
   XCircle, ChevronsUpDown, Copy, Folder, Trash2,
   Move, Search, Stethoscope, Globe, Code2,
   FolderPlus, Info, Replace, RefreshCw, Files, FolderTree, Layers,
+  ExternalLink, GitCompare,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -302,14 +304,14 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
 });
 RunCommandCard.displayName = 'RunCommandCard';
 
-// ─── WriteFileCard — collapsible diff (BUG 9 FIX) ───────────────────────────
+// ─── WriteFileCard — collapsible diff, no per-card accept/reject ────────────
 interface WriteFileCardProps {
   tool: ToolCall;
   decision?: 'accepted' | 'rejected';
   onDecide: (phaseId: string, decision: 'accepted' | 'rejected', proposalId: string) => void;
 }
 
-const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) => {
+const WriteFileCard = memo(({ tool, decision }: WriteFileCardProps) => {
   const dur = tool.startedAt && tool.finishedAt ? tool.finishedAt - tool.startedAt : null;
   let parsed: any = null;
   try { if (tool.result?.trim().startsWith('{')) parsed = JSON.parse(tool.result); } catch { /* */ }
@@ -318,6 +320,7 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
   const rawFilename = parsed?.fileName
     || basename(tool.summary.replace(/^(creating|editing|created|edited|write|writing)\s*/i, '').trim())
     || (tool.args?.path ? basename(tool.args.path as string) : tool.summary);
+  const filePath: string = parsed?.path || (tool.args?.path as string) || '';
 
   const ext = rawFilename.split('.').pop()?.toLowerCase() || '';
   const langMap: Record<string, string> = {
@@ -330,22 +333,32 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
   const liveContent: string | null = tool.status === 'running' && tool.args?.content
     ? (tool.args.content as string) : null;
 
-  const proposalId = tool.phaseId;
   const isDecided = !!decision;
   const hasHunks = parsed?.hunks?.length > 0;
   const hasPreview = !!parsed?.preview;
   const hasDiff = hasHunks || hasPreview;
   const diffLineCount = parsed?.hunks?.length || 0;
 
-  // Diff default açık: yeni dosyalarda preview, edit'lerde diff her zaman başta görünür
   const [diffOpen, setDiffOpen] = useState(true);
+
+  const openInEditor = useCallback(() => {
+    if (filePath) vscode.postMessage({ type: 'openFile', path: filePath });
+  }, [filePath]);
+
+  const openDiff = useCallback(() => {
+    if (filePath) vscode.postMessage({ type: 'showDiff', path: filePath });
+  }, [filePath]);
 
   return (
     <div className={`card card-file ${tool.status}${decision ? ` change-${decision}` : ''}`}>
-      <div className="card-header non-clickable">
+      <div className="card-header">
         <StatusDot status={tool.status} />
         <FileEdit size={11} className="card-icon-type" />
-        <span className="card-label">
+        <span
+          className={`card-label${filePath && tool.status !== 'running' ? ' card-label-clickable' : ''}`}
+          onClick={filePath && tool.status !== 'running' ? openInEditor : undefined}
+          title={filePath && tool.status !== 'running' ? `Open ${filePath} in editor` : undefined}
+        >
           <span className="card-verb">{isEdit ? 'Edited' : 'Created'}</span>&nbsp;
           <span className="card-filename">
             {tool.status === 'running'
@@ -363,6 +376,18 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
         {decision === 'accepted' && <span className="change-badge accepted"><CheckCheck size={10} /> Accepted</span>}
         {decision === 'rejected' && <span className="change-badge rejected"><XCircle size={10} /> Rejected</span>}
         {dur != null && <span className="card-dur">{fmtDur(dur)}</span>}
+        {/* Open in VSCode diff view */}
+        {filePath && tool.status !== 'running' && isEdit && (
+          <button className="card-action-btn" onClick={openDiff} title="Open diff in VSCode">
+            <GitCompare size={10} />
+          </button>
+        )}
+        {/* Open in editor */}
+        {filePath && tool.status !== 'running' && (
+          <button className="card-action-btn" onClick={openInEditor} title="Open in editor">
+            <ExternalLink size={10} />
+          </button>
+        )}
         {hasDiff && tool.status !== 'running' && !isDecided && (
           <button
             className="diff-toggle-btn"
@@ -378,7 +403,7 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
       {/* Live preview while writing */}
       {liveContent && <LiveCodePreview content={liveContent} lang={lang} />}
 
-      {/* Diff/preview — default açık */}
+      {/* Diff/preview — default open */}
       {!liveContent && tool.status !== 'running' && !isDecided && hasDiff && (
         <CollapsibleBody open={diffOpen}>
           <div className="file-diff-container">
@@ -398,18 +423,7 @@ const WriteFileCard = memo(({ tool, decision, onDecide }: WriteFileCardProps) =>
           </div>
         </CollapsibleBody>
       )}
-
-      {/* Per-card accept/reject */}
-      {tool.status === 'done' && !isDecided && (
-        <div className="card-action-row">
-          <button className="btn-reject" onClick={() => onDecide(tool.phaseId, 'rejected', proposalId)}>
-            <XCircle size={11} /> Reject
-          </button>
-          <button className="btn-accept" onClick={() => onDecide(tool.phaseId, 'accepted', proposalId)}>
-            <CheckCheck size={11} /> Accept
-          </button>
-        </div>
-      )}
+      {/* NO per-card accept/reject buttons — handled globally via proposal bar */}
     </div>
   );
 });
@@ -520,11 +534,47 @@ const FindReplaceCard = memo(({ tool }: { tool: ToolCall }) => {
 FindReplaceCard.displayName = 'FindReplaceCard';
 
 const ReadMultipleFilesCard = memo(({ tool }: { tool: ToolCall }) => {
-  const paths = tool.args?.paths;
-  const count = Array.isArray(paths) ? paths.length : null;
-  const meta = tool.status !== 'running' && count ? `${count} files` : undefined;
-  return <SimplePill tool={tool} icon={<Files size={11} />}
-    label={count ? `Read ${count} files` : tool.summary} meta={meta} />;
+  const [open, setOpen] = useState(false);
+  const paths: string[] = Array.isArray(tool.args?.paths) ? (tool.args.paths as string[]) : [];
+  const count = paths.length;
+  const dur = tool.startedAt && tool.finishedAt ? tool.finishedAt - tool.startedAt : null;
+
+  return (
+    <div className="read-multi-card">
+      <div className="read-multi-header" onClick={() => count > 0 && setOpen(o => !o)}>
+        <StatusDot status={tool.status} />
+        <span className="pill-icon"><Files size={11} /></span>
+        <span className="pill-label">
+          {tool.status === 'running'
+            ? <TypewriterText text={count ? `Read ${count} files` : tool.summary} speed={16} />
+            : (count ? `Read ${count} files` : tool.summary)}
+        </span>
+        {tool.status !== 'running' && count > 0 && (
+          <span className="pill-meta">{count} files</span>
+        )}
+        {dur != null && <span className="pill-dur">{fmtDur(dur)}</span>}
+        {count > 0 && (
+          <ChevronDown size={10} className={`batch-ops-chevron${open ? ' open' : ''}`} />
+        )}
+      </div>
+      {open && count > 0 && (
+        <div className="read-multi-list">
+          {paths.map((p, i) => (
+            <div
+              key={i}
+              className="read-multi-row"
+              onClick={() => vscode.postMessage({ type: 'openFile', path: p })}
+              title={`Open ${p}`}
+            >
+              <FileSearch size={9} className="batch-row-icon" />
+              <span className="batch-row-path">{basename(p)}</span>
+              <ExternalLink size={8} className="read-multi-open" />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 });
 ReadMultipleFilesCard.displayName = 'ReadMultipleFilesCard';
 

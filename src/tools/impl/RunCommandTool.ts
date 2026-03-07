@@ -1,6 +1,19 @@
 import { BaseTool } from '../core/BaseTool';
 import { Tool } from '../../core/types';
 import { spawn } from 'child_process';
+import * as vscode from 'vscode';
+
+// Shared CodAI terminal (auto-recreated if closed)
+let _codaiTerminal: vscode.Terminal | undefined;
+function getCodaiTerminal(): vscode.Terminal {
+    if (!_codaiTerminal || _codaiTerminal.exitStatus !== undefined) {
+        _codaiTerminal = vscode.window.createTerminal({
+            name: 'CodAI',
+            iconPath: new vscode.ThemeIcon('sparkle'),
+        });
+    }
+    return _codaiTerminal;
+}
 
 export class RunCommandTool extends BaseTool {
     get definition(): Tool {
@@ -46,6 +59,13 @@ export class RunCommandTool extends BaseTool {
         const timeoutMs = Math.min(Number(args.timeout) || 60000, 300000);
         const isBackground = Boolean(args.background);
         const startedAt = Date.now();
+
+        // ── Mirror command to VSCode integrated terminal ────────────────
+        try {
+            const term = getCodaiTerminal();
+            term.show(true); // show but keep focus on chat panel
+            term.sendText(command, true);
+        } catch { /* non-critical */ }
 
         return new Promise((resolve) => {
             const isWin = process.platform === 'win32';

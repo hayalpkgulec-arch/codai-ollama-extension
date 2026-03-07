@@ -67,6 +67,14 @@ export class WriteFileTool extends BaseTool {
             });
             const preview = afterContent.split(/\r?\n/).slice(0, 24).join('\n');
 
+            // ── Emit diff to webview → VSCode diff view ─────────────────
+            this.emitToWebview('showDiff', {
+                path: relativePath,
+                before: beforeContent,
+                after: afterContent,
+                mode,
+            });
+
             return JSON.stringify({
                 __tool: 'write_file',
                 status: 'success',

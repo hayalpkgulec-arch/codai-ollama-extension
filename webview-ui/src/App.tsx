@@ -7,7 +7,7 @@ import { ModeSelector, MODES } from './components/chat/ModeSelector';
 import { PlanPanel } from './components/plan/PlanPanel';
 import { ProviderSettings } from './components/settings/ProviderSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
-import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings } from 'lucide-react';
+import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, Bot, Terminal, GitCompare } from 'lucide-react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
 
@@ -37,6 +37,7 @@ export default function App() {
     taskDone, setTaskDone,
     isStreaming,
     initialModel,
+    iterationCount,
     activeFileContext, setActiveFileContext,
     ollamaModels,
     providerInfo,
@@ -413,7 +414,7 @@ export default function App() {
 
         <div className="input-bottom-row">
           <div className="input-bottom-left">
-            {/* BUG 10 FIX: Aktif dosyayı context olarak ekle */}
+            {/* Aktif dosyayı context olarak ekle */}
             <div className="context-btn-wrap">
               <button
                 className={`input-plus-btn${activeFileContext ? ' has-context' : ''}`}
@@ -427,8 +428,35 @@ export default function App() {
               )}
             </div>
             <ModeSelector selected={selectedMode} onChange={handleModeChange} disabled={isProcessing} />
-            {/* BUG 14 FIX: Dinamik model listesi */}
             <ModelPicker models={allModels} selected={model} onChange={handleModelChange} disabled={isProcessing} />
+
+            {/* Terminal button — opens CodAI terminal */}
+            <button
+              className="input-icon-btn"
+              title="Open CodAI terminal"
+              onClick={() => vscode.postMessage({ type: 'runInTerminal', command: '' })}
+            >
+              <Terminal size={12} />
+            </button>
+
+            {/* Diff view — open last modified file in diff */}
+            <button
+              className="input-icon-btn"
+              title="Open last file diff in VSCode"
+              onClick={() => vscode.postMessage({ type: 'showDiff', path: '' })}
+            >
+              <GitCompare size={12} />
+            </button>
+
+            {/* Background agent status indicator */}
+            {isProcessing && (
+              <div className="agent-status-pill" title={`Agent running · iteration ${iterationCount}`}>
+                <Bot size={11} className="agent-status-icon spin-slow" />
+                <span className="agent-status-label">
+                  {iterationCount > 1 ? `iter ${iterationCount}` : 'working'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="input-bottom-right">
