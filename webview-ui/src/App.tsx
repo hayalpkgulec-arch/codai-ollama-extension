@@ -116,6 +116,26 @@ export default function App() {
 
   useEffect(() => { if (todoItems) setPlanClosed(false); }, [todoItems]);
 
+  // ── Persist conversation to backend whenever messages change ─────────────
+  // Debounced so we don't spam on every streaming chunk
+  useEffect(() => {
+    if (!activeSessionId || messages.length === 0 || isProcessing) return;
+    const timer = setTimeout(() => {
+      // Convert UI messages back to a saveable format
+      const saveable = messages.map(m => ({
+        role: m.role,
+        segments: m.segments,
+        error: m.error,
+      }));
+      vscode.postMessage({
+        type: 'saveSessionHistory',
+        sessionId: activeSessionId,
+        messages: saveable,
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [messages, activeSessionId, isProcessing]);
+
   useEffect(() => {
     const modeObj = MODES.find(m => m.id === mode);
     if (modeObj) setSelectedMode(modeObj);

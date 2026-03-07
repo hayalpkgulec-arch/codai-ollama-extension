@@ -110,21 +110,37 @@ export class TaskController {
         }
     }
 
-    public async deleteSession(sessionId: string): Promise<void> {
-        const sessions = await this.getSessions();
-        const filtered = sessions.filter((s: any) => s.id !== sessionId);
-        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, filtered);
-    }
-
     public async renameSession(sessionId: string, title: string): Promise<void> {
         await this.updateSessionMeta(sessionId, { title });
     }
 
+    public async saveSessionHistory(sessionId: string, messages: any[]): Promise<void> {
+        const key = `codai_session_history_${sessionId}`;
+        await this._extensionContext.globalState.update(key, messages);
+    }
+
     public async loadSession(sessionId: string): Promise<void> {
-        // For now: history is restored via clearHistory + loading from persistence
-        // In future: multi-session workspace with per-session history
         if (!this._view) return;
-        this._view.postMessage({ type: 'sessionLoaded', sessionId });
+        const key = `codai_session_history_${sessionId}`;
+        const messages = this._extensionContext.globalState.get<any[]>(key) ?? [];
+        const sessions = await this.getSessions();
+        const meta = sessions.find(s => s.id === sessionId);
+        this._view.postMessage({
+            type: 'sessionLoaded',
+            sessionId,
+            messages,
+            mode: meta?.mode ?? 'code',
+            title: meta?.title ?? 'Chat',
+        });
+    }
+
+    public async deleteSession(sessionId: string): Promise<void> {
+        const sessions = await this.getSessions();
+        const filtered = sessions.filter((s: any) => s.id !== sessionId);
+        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, filtered);
+        // Also delete the history
+        const histKey = `codai_session_history_${sessionId}`;
+        await this._extensionContext.globalState.update(histKey, undefined);
     }
 
     public postInitialState() {

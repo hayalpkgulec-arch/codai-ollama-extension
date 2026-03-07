@@ -170,7 +170,12 @@ export function useHistory() {
   // ── Load session (restore conversation) ──────────────────────────────────
   const loadSession = useCallback((id: string) => {
     setActiveSessionId(id);
-    vscode.postMessage({ type: 'loadSession', sessionId: id });
+    // First clear current state, then load session history from backend
+    vscode.postMessage({ type: 'clearHistory' });
+    // Small delay so clearHistory processes before sessionLoaded arrives
+    setTimeout(() => {
+      vscode.postMessage({ type: 'loadSession', sessionId: id });
+    }, 50);
   }, []);
 
   // ── Fetch sessions from backend ───────────────────────────────────────────

@@ -445,6 +445,32 @@ export function useVSCodeMessage() {
           });
           break;
 
+        // ── Session loaded (restore from history) ───────────────────────
+        case 'sessionLoaded':
+          if (Array.isArray(msg.messages) && msg.messages.length > 0) {
+            // Messages are already in UI segment format (saved by App.tsx)
+            const restored = msg.messages.map((m: any, i: number) => ({
+              id: `r${i}-${Date.now()}`,
+              role: m.role as 'user' | 'assistant',
+              segments: Array.isArray(m.segments) ? m.segments : [],
+              error: m.error,
+              isStreaming: false,
+            }));
+            setMessages(restored);
+          } else {
+            setMessages([]);
+          }
+          if (msg.mode) setMode(msg.mode as AgentMode);
+          setIsProcessing(false);
+          setIsStreaming(false);
+          setTaskDone(null);
+          setPendingQuestion(null);
+          setPendingQuestions(null);
+          setPlanSaved(null);
+          setIterationCount(0);
+          bumpScroll();
+          break;
+
         case 'clearHistory':
           clearMessages();
           setTodoItems('');

@@ -282,6 +282,18 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 }
                 break;
             }
+
+            // ── Chat History: save full message history for a session ─────
+            case 'saveSessionHistory': {
+                if (typeof data.sessionId === 'string' && Array.isArray(data.messages)) {
+                    try {
+                        await controller.saveSessionHistory(data.sessionId, data.messages);
+                    } catch (e: any) {
+                        console.error('CodAI: saveSessionHistory error:', e);
+                    }
+                }
+                break;
+            }
         }
     });
 }
