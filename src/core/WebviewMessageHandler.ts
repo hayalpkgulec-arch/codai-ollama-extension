@@ -78,6 +78,18 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 break;
             }
 
+            // ── Send text input to running terminal (interactive) ─────────
+            case 'sendTerminalInput': {
+                if (typeof data.text === 'string' && data.text) {
+                    try {
+                        const term = getCodaiTerminal();
+                        term.show(true);
+                        term.sendText(data.text, true); // addNewLine=true → Enter
+                    } catch { /* ignore */ }
+                }
+                break;
+            }
+
             // ── Open file in VSCode editor ────────────────────────────────
             case 'openFile': {
                 const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

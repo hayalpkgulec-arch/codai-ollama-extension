@@ -9,7 +9,7 @@ import {
   XCircle, ChevronsUpDown, Copy, Folder, Trash2,
   Move, Search, Stethoscope, Globe, Code2,
   FolderPlus, Info, Replace, RefreshCw, Files, FolderTree, Layers,
-  ExternalLink, GitCompare,
+  ExternalLink, GitCompare, Send,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -200,11 +200,13 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
   const stderr: string = parsed?.stderr?.trimEnd() || '';
   const stdoutLines = stdout ? stdout.split('\n') : [];
   const stderrLines = stderr ? stderr.split('\n') : [];
-  const allLines = [...stdoutLines, ...stderrLines];
-  const lineCount = allLines.length;
+  const lineCount = stdoutLines.length + stderrLines.length;
 
   const PREVIEW_LINES = 8;
   const [expanded, setExpanded] = useState(false);
+  // Interactive input state
+  const [inputVal, setInputVal] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
 
   const cmdLabel = (parsed?.command || tool.summary || '').replace(/^(Run:|run:)\s*/i, '');
@@ -213,27 +215,35 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
   const isBackground = Boolean(parsed?.background);
   const isInterrupted = parsed?.status === 'interrupted';
   const isTruncated = Boolean(parsed?.truncated);
-  const isAutoDetected = Boolean(parsed?.autoDetected);
   const bgId: string | undefined = parsed?.bgId;
-  const pid: number | undefined = parsed?.pid;
 
-  // For background/running tools: allow sending Ctrl+C
   const handleStop = useCallback(() => {
     vscode.postMessage({ type: 'killBgProcess', bgId });
   }, [bgId]);
 
+  // Send text input to the running terminal
+  const handleSendInput = useCallback(() => {
+    const text = inputVal.trim();
+    if (!text) return;
+    vscode.postMessage({ type: 'sendTerminalInput', text });
+    setInputVal('');
+  }, [inputVal]);
+
+  const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); handleSendInput(); }
+    // Ctrl+C shortcut in input field
+    if (e.key === 'c' && e.ctrlKey) { e.preventDefault(); vscode.postMessage({ type: 'killBgProcess', bgId }); }
+  }, [handleSendInput, bgId]);
+
   useEffect(() => {
-    if (outputRef.current && !expanded) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
+    if (outputRef.current && !expanded) outputRef.current.scrollTop = outputRef.current.scrollHeight;
   }, [stdout, stderr, expanded]);
 
   const hasOutput = (stdout || stderr) && tool.status !== 'running';
   const showExpander = hasOutput && lineCount > PREVIEW_LINES;
   const isRunning = tool.status === 'running';
-
-  // Determine status label for badge
-  const bgLabel = isAutoDetected ? 'server (auto)' : 'background';
+  // Show interactive input bar when background process is alive
+  const showInput = isBackground && bgId && !isInterrupted;
 
   return (
     <div className={`term-card ${tool.status}${isBackground ? ' bg-mode' : ''}${isInterrupted ? ' interrupted' : ''}`}>
@@ -243,66 +253,30 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
           <StatusDot status={isInterrupted ? 'error' : tool.status} />
           <span className="term-icon"><Terminal size={11} /></span>
           <span className="term-cmd">
-            {isRunning
-              ? <TypewriterText text={cmdLabel} speed={16} />
-              : cmdLabel}
+            {isRunning ? <TypewriterText text={cmdLabel} speed={16} /> : cmdLabel}
           </span>
         </div>
         <div className="term-header-right">
-          {/* Background badge */}
-          {isBackground && !isRunning && (
-            <span className="term-badge background">{bgLabel}{pid ? ` · pid ${pid}` : ''}</span>
-          )}
           {/* Interrupted badge */}
-          {isInterrupted && (
-            <span className="term-badge interrupted">interrupted</span>
-          )}
-          {/* Exit code */}
-          {exitCode !== null && !isInterrupted && (
+          {isInterrupted && <span className="term-badge interrupted">interrupted</span>}
+          {/* Exit code — only for completed non-background */}
+          {exitCode !== null && !isInterrupted && !isBackground && (
             <span className={`term-badge exit ${exitOk ? 'ok' : 'fail'}`}>exit {exitCode}</span>
           )}
           {dur != null && <span className="term-dur">{fmtDur(dur)}</span>}
-          {/* Stop button — show while running or when background+bgId exists */}
-          {(isRunning || (isBackground && bgId && !isInterrupted && tool.status === 'done')) && (
-            <button
-              className="term-stop-btn"
-              onClick={handleStop}
-              title="Send Ctrl+C to terminal"
-            >
+          {/* Stop button — only in header, no banner */}
+          {(isRunning || (isBackground && bgId && !isInterrupted)) && (
+            <button className="term-stop-btn" onClick={handleStop} title="Ctrl+C">
               <XCircle size={10} /> Stop
             </button>
           )}
         </div>
       </div>
 
-      {/* ── Running indicator ── */}
-      {isRunning && (
-        <div className="term-running-indicator">
-          <Loader2 size={10} className="spin-icon" />
-          <span>running in terminal…</span>
-          <button className="term-stop-btn inline" onClick={handleStop} title="Send Ctrl+C">
-            <XCircle size={10} /> Stop
-          </button>
-        </div>
-      )}
-
-      {/* ── Background banner ── */}
-      {isBackground && !isRunning && !isInterrupted && (
-        <div className="term-bg-banner">
-          <span>Process running in CodAI terminal</span>
-          <button className="term-stop-btn inline" onClick={handleStop} title="Send Ctrl+C">
-            <XCircle size={10} /> Stop
-          </button>
-        </div>
-      )}
-
       {/* ── Output body ── */}
       {hasOutput && (
         <div className="term-body">
-          <div
-            ref={outputRef}
-            className={`term-output ${expanded ? 'expanded' : showExpander ? 'collapsed' : 'auto'}`}
-          >
+          <div ref={outputRef} className={`term-output ${expanded ? 'expanded' : showExpander ? 'collapsed' : 'auto'}`}>
             <div className="term-line prompt">
               <span className="term-gutter">$</span>
               <span className="term-text">{cmdLabel}</span>
@@ -321,8 +295,7 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
             ))}
             {isTruncated && (
               <div className="term-line truncated">
-                <span className="term-gutter" />
-                <span className="term-text">… output truncated</span>
+                <span className="term-gutter" /><span className="term-text">… output truncated</span>
               </div>
             )}
           </div>
@@ -332,6 +305,31 @@ const RunCommandCard = memo(({ tool }: { tool: ToolCall }) => {
               {expanded ? 'Show less' : `Show all ${lineCount} lines`}
             </button>
           )}
+        </div>
+      )}
+
+      {/* ── Interactive input bar — send text to running terminal ── */}
+      {showInput && (
+        <div className="term-input-bar">
+          <span className="term-input-prompt">›</span>
+          <input
+            ref={inputRef}
+            className="term-input-field"
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            onKeyDown={handleInputKeyDown}
+            placeholder="Send input to terminal… (Enter to send, Ctrl+C to stop)"
+            spellCheck={false}
+            autoComplete="off"
+          />
+          <button
+            className="term-input-send"
+            onClick={handleSendInput}
+            disabled={!inputVal.trim()}
+            title="Send (Enter)"
+          >
+            <Send size={10} />
+          </button>
         </div>
       )}
     </div>

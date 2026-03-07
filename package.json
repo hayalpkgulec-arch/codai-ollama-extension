@@ -2,7 +2,7 @@
   "name": "codai-ollama-tools",
   "displayName": "CodAI Ollama Tools",
   "description": "AI-powered coding assistant with Ollama integration",
-  "version": "0.0.25",
+  "version": "0.0.26",
   "publisher": "codai",
   "repository": {
     "type": "git",

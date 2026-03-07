@@ -6,6 +6,8 @@ import { LLMService } from '../services/LLMService';
 import { WorkspaceManager } from '../services/WorkspaceManager';
 import { PROVIDER_DEFS } from '../services/providers';
 import { globalToolRegistry } from '../tools/index';
+import { buildEnvironmentDetails } from './SystemPrompts';
+import { getCodaiTerminal } from '../integrations/terminal/CodaiTerminalManager';
 
 export class TaskController {
     private _view?: vscode.Webview;
@@ -311,6 +313,26 @@ export class TaskController {
         pending.resolve?.({ decision, candidate: pending.candidate });
     }
 
+    /**
+     * Build environment_details block for injection into each user message.
+     * Cline injects this at the end of every user message so the AI always
+     * has fresh context about running terminals and background processes.
+     */
+    private buildEnvDetails(): string {
+        try {
+            const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+            // Collect active VSCode terminals
+            const activeTerminals = vscode.window.terminals
+                .filter(t => t.exitStatus === undefined)
+                .map(t => ({ name: t.name }));
+
+            return buildEnvironmentDetails({ cwd, activeTerminals });
+        } catch {
+            return '';
+        }
+    }
+
     public abortCurrentTask() {
         if (this.activeAbortController) {
             this.activeAbortController.abort();
@@ -334,7 +356,13 @@ export class TaskController {
         try {
             this.emitTurnEvent(turnRequestId, 'turnStart', { userText: message, startedAt: Date.now() });
 
-            this.workspaceManager.appendToHistory({ role: 'user', content: message });
+            // Build environment_details — Cline injects this at end of every user message
+            const envDetails = this.buildEnvDetails();
+            const messageWithEnv = envDetails
+                ? `${message}\n\n${envDetails}`
+                : message;
+
+            this.workspaceManager.appendToHistory({ role: 'user', content: messageWithEnv });
             await this.workspaceManager.persistState();
 
             let continueLoop = true;
