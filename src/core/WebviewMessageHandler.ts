@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { TaskController } from './TaskController';
 import { DiffViewProvider } from '../integrations/DiffViewProvider';
 import { getCodaiTerminal, killBackgroundProcess } from '../tools/impl/RunCommandTool';
+import { onBgProcessDied, isBgProcessAlive } from '../integrations/terminal/CodaiTerminalManager';
 
 export function setupWebviewMessageHandler(webview: vscode.Webview, controller: TaskController) {
     webview.onDidReceiveMessage(async (data) => {
@@ -68,13 +69,28 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
             case 'killBgProcess': {
                 if (typeof data.bgId === 'string') {
                     killBackgroundProcess(data.bgId);
+                    // Immediately notify webview — process is gone
+                    webview.postMessage({ type: 'bgProcessDied', bgId: data.bgId, exitCode: null, signal: 'SIGTERM' });
                 }
-                // Also send Ctrl+C to the shared terminal in case it's running there
+                // Also send Ctrl+C to the shared terminal
                 try {
                     const term = getCodaiTerminal();
                     term.show(true);
                     term.sendText('\x03', false); // Ctrl+C
                 } catch { /* ignore */ }
+                break;
+            }
+
+            // ── Register bg process death watcher ─────────────────────────
+            // Called by webview when it receives a tool result with a bgId
+            case 'watchBgProcess': {
+                const bgId = data.bgId;
+                if (typeof bgId === 'string' && isBgProcessAlive(bgId)) {
+                    onBgProcessDied(bgId, (exitCode, signal) => {
+                        // Notify webview when the background process exits naturally
+                        webview.postMessage({ type: 'bgProcessDied', bgId, exitCode, signal });
+                    });
+                }
                 break;
             }
 

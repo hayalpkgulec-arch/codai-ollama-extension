@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { ChatMessage, Segment, ToolCall, AgentMode } from '../types';
+import { vscode } from '../vscode';
 
 // ── Immutable last-element update ────────────────────────────────────────────
 function updateLast<T>(arr: T[], fn: (item: T) => T): T[] {
@@ -302,6 +303,18 @@ export function useVSCodeMessage() {
         case 'toolActivityDone':
         case 'toolActivityError': {
           const ok = msg.type === 'toolActivityDone';
+          // B01 FIX: If this is a background run_command, watch for process death
+          const rawResult: string = msg.rawResult || '';
+          if (rawResult.includes('"background":true') || rawResult.includes('"bgId":')) {
+            try {
+              const parsed = JSON.parse(rawResult);
+              if (parsed?.bgId) {
+                // Ask backend to notify us when this process exits
+                vscode.postMessage({ type: 'watchBgProcess', bgId: parsed.bgId });
+              }
+            } catch { /* ignore */ }
+          }
+
           setMessages(prev =>
             updateLast(prev, last => {
               if (last.role !== 'assistant') return last;
@@ -330,6 +343,47 @@ export function useVSCodeMessage() {
               return { ...last, segments: segs };
             })
           );
+          break;
+        }
+
+        // ── Background process died (Ctrl+C or natural exit) ────────────
+        // Updates the tool card UI to show interrupted/done state
+        case 'bgProcessDied': {
+          const bgId = msg.bgId as string;
+          const exitCode = msg.exitCode as number | null;
+          const signal = msg.signal as string | null;
+          const isInterrupted = signal === 'SIGINT' || signal === 'SIGTERM' || signal === '^C';
+
+          setMessages(prev => prev.map(m => {
+            if (m.role !== 'assistant') return m;
+            const segs = m.segments.map(seg => {
+              if (seg.type !== 'tool') return seg;
+              // Find the tool that has this bgId in its result
+              let parsed: any = null;
+              try { if (seg.tool.result?.trim().startsWith('{')) parsed = JSON.parse(seg.tool.result); } catch {}
+              if (!parsed || parsed.bgId !== bgId) return seg;
+
+              // Update the result JSON with new status
+              const updatedResult = JSON.stringify({
+                ...parsed,
+                status: isInterrupted ? 'interrupted' : (exitCode === 0 ? 'success' : 'error'),
+                background: false,
+                exitCode,
+                signal,
+                bgId: undefined, // clear bgId so Stop button hides
+              });
+              return {
+                ...seg,
+                tool: {
+                  ...seg.tool,
+                  status: 'done' as const,
+                  result: updatedResult,
+                  finishedAt: Date.now(),
+                },
+              };
+            });
+            return { ...m, segments: segs };
+          }));
           break;
         }
 

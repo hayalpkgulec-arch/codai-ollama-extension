@@ -187,7 +187,22 @@ export function getCodaiTerminal(): vscode.Terminal {
 }
 
 // ─── Background process registry ─────────────────────────────────────────────
-const _bgProcesses = new Map<string, { proc: ChildProcess; timer: NodeJS.Timeout }>();
+type BgEntry = {
+    proc: ChildProcess;
+    timer: NodeJS.Timeout;
+    onDied?: (exitCode: number | null, signal: string | null) => void;
+};
+const _bgProcesses = new Map<string, BgEntry>();
+
+/** Register a "process died" callback — called when the bg process exits naturally or via Ctrl+C */
+export function onBgProcessDied(id: string, cb: (exitCode: number | null, signal: string | null) => void): void {
+    const entry = _bgProcesses.get(id);
+    if (entry) entry.onDied = cb;
+}
+
+export function isBgProcessAlive(id: string): boolean {
+    return _bgProcesses.has(id);
+}
 
 export function killBackgroundProcess(id: string): boolean {
     const entry = _bgProcesses.get(id);
@@ -252,6 +267,31 @@ export async function runCommand(
     const { shell, args: shellArgs, isPowerShell } = getShellConfig();
     const adapted = adaptForShell(command, isPowerShell);
 
+    // B04 FIX: Validate cwd exists before spawning
+    // If command starts with "cd X && ..." and X doesn't exist, spawn will silently
+    // use workspaceRoot anyway. Detect early and return clear error.
+    const cdMatch = command.match(/^\s*cd\s+["']?([^"';&]+?)["']?\s*(?:&&|;|\n|$)/);
+    if (cdMatch) {
+        const targetDir = cdMatch[1].trim();
+        const resolvedDir = require('path').isAbsolute(targetDir)
+            ? targetDir
+            : require('path').join(workspaceRoot, targetDir);
+        if (!require('fs').existsSync(resolvedDir)) {
+            return {
+                status: 'error',
+                stdout: '',
+                stderr: `cd: Cannot find path '${resolvedDir}' — directory does not exist`,
+                exitCode: 1,
+                signal: null,
+                durationMs: 0,
+                background: false,
+                autoDetected: false,
+                truncated: false,
+                timedOut: false,
+            };
+        }
+    }
+
     return new Promise<RunResult>((resolve) => {
         const child = spawn(shell, [...shellArgs, adapted], {
             cwd: workspaceRoot,
@@ -296,6 +336,8 @@ export async function runCommand(
                 }
             }, BACKGROUND_TIMEOUT_MS);
             _bgProcesses.set(bgId, { proc: child, timer: zombieTimer });
+
+            // onDied callback is fired from the close handler above — no separate exit listener needed
 
             let settledTimer: NodeJS.Timeout | null = null;
             let hasReceivedOutput = false;
@@ -395,6 +437,9 @@ export async function runCommand(
                 clearTimeout(settledTimer ?? undefined);
                 clearTimeout(initialTimer);
                 clearTimeout(maxTimer);
+                // B06 FIX: Fire onDied callback from close (not exit) for cleanup reliability
+                const entry = _bgProcesses.get(bgId);
+                if (entry?.onDied) entry.onDied(code, sig ?? null);
                 _bgProcesses.delete(bgId);
                 if (finished) return;
                 finished = true;
@@ -489,10 +534,11 @@ function mirrorToTerminal(command: string): void {
     try {
         const term = getCodaiTerminal();
         term.show(true);
-        // Split && chains for PowerShell compat
-        for (const part of splitCompound(command)) {
-            if (part.trim()) term.sendText(part.trim(), true);
-        }
+        const { isPowerShell } = getShellConfig();
+        // B05 FIX: Mirror must match what child_process executes.
+        // adaptForShell converts && → ; for PowerShell — mirror the same adapted command.
+        const mirrored = adaptForShell(command, isPowerShell);
+        term.sendText(mirrored, true);
     } catch { /* non-critical */ }
 }
 

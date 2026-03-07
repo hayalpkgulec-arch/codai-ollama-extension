@@ -239,15 +239,25 @@ export class TaskController {
             try {
                 const p = JSON.parse(rawResult);
                 if (p.__tool === 'run_command') {
-                    const combined = [p.stdout, p.stderr].filter(Boolean).join('\n').trimEnd();
+                    // B09 FIX: trim stderr before combining, cap each independently
+                    const stdout = (p.stdout || '').trimEnd();
+                    const stderr = (p.stderr || '').trimEnd();
+                    const combined = [stdout, stderr].filter(Boolean).join('\n');
                     const truncated = combined.length > MAX_RESULT
                         ? combined.slice(0, MAX_RESULT) + `\n...[${combined.length - MAX_RESULT} chars truncated]`
                         : combined;
+                    // background: give AI clear signal about process status
+                    const statusLabel = p.background
+                        ? `started in background (still running)`
+                        : p.status === 'interrupted' ? 'interrupted by user'
+                        : p.status === 'timeout' ? `timed out`
+                        : p.status;
                     return JSON.stringify({
                         __tool: 'run_command',
                         status: p.status,
+                        statusLabel,
                         command: p.command,
-                        output: truncated,
+                        output: truncated || '(no output)',
                         exitCode: p.exitCode,
                         background: p.background,
                         timedOut: p.timedOut,
@@ -283,7 +293,26 @@ export class TaskController {
             try {
                 const parsed = JSON.parse(rawResult);
                 if (parsed && parsed.__tool === 'run_command') {
-                    return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, command: parsed.command || '', stdout: parsed.stdout || '', stderr: parsed.stderr || '', exitCode: typeof parsed.exitCode === 'number' ? parsed.exitCode : -1, durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : (finishedAt - startedAt) };
+                    // B03 FIX: background/interrupted/timeout statuses map correctly
+                    const cmdStatus: 'success' | 'error' =
+                        parsed.status === 'success' || parsed.status === 'background' ? 'success' : 'error';
+                    return {
+                        ...base,
+                        status: cmdStatus,
+                        summary: parsed.summary || summary,
+                        command: parsed.command || '',
+                        stdout: parsed.stdout || '',
+                        stderr: parsed.stderr || '',
+                        exitCode: typeof parsed.exitCode === 'number' ? parsed.exitCode : null,
+                        background: Boolean(parsed.background),
+                        bgId: parsed.bgId || undefined,
+                        pid: parsed.pid || undefined,
+                        autoDetected: Boolean(parsed.autoDetected),
+                        timedOut: Boolean(parsed.timedOut),
+                        truncated: Boolean(parsed.truncated),
+                        durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : (finishedAt - startedAt),
+                        rawResult,
+                    };
                 }
                 if (parsed && parsed.__tool === 'write_file') {
                     return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, mode: parsed.mode === 'editing' ? 'editing' : 'creating', path: parsed.path || '', fileName: parsed.fileName || '', preview: parsed.preview || '', hunks: Array.isArray(parsed.hunks) ? parsed.hunks : [], addedCount: typeof parsed.addedCount === 'number' ? parsed.addedCount : 0, removedCount: typeof parsed.removedCount === 'number' ? parsed.removedCount : 0, errorMessage: parsed.errorMessage || '', durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : (finishedAt - startedAt), truncated: Boolean(parsed.truncated) };

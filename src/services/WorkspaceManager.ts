@@ -240,6 +240,14 @@ export class WorkspaceManager {
     }
 
     public appendToHistory(message: Message) {
+        // B07 FIX: Strip environment_details from old user messages before adding new one.
+        // environment_details is only useful for the CURRENT message — old ones waste tokens.
+        this.conversationHistory = this.conversationHistory.map(m => {
+            if (m.role !== 'user' || typeof m.content !== 'string') return m;
+            const stripped = m.content.replace(/\n\n<environment_details>[\s\S]*?<\/environment_details>/g, '').trim();
+            return stripped === m.content ? m : { ...m, content: stripped };
+        });
+
         this.conversationHistory.push(message);
         // T14 FIX: Context window koruması — geçmişi trim et
         this.trimHistory();
