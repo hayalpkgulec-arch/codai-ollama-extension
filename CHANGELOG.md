@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.7] - 2026-03-07
+### Test
+- Auto-updater test: v0.0.6 → v0.0.7
+
+---
+
 ## [0.0.6] - 2026-03-07
 ### Fixed
 - Auto-updater now works on VSCodium (`process.execPath` used instead of hardcoded `code` CLI)
