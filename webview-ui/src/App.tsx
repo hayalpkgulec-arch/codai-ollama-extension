@@ -158,7 +158,19 @@ export default function App() {
     return pending;
   }, [messages, decisions]);
 
-  // showWorkingShimmer removed — replaced by WorkingIndicator component
+  // ── Last assistant message has visible content? ──────────────────────────
+  // Used to avoid duplicate "..." when thinking/tool segment already visible
+  const lastMessageHasContent = useMemo(() => {
+    const asstMsgs = messages.filter(m => m.role === 'assistant');
+    if (!asstMsgs.length) return false;
+    const last = asstMsgs[asstMsgs.length - 1];
+    return last.segments.some(s => {
+      if (s.type === 'thinking') return !s.done || (s.text?.length > 0);
+      if (s.type === 'tool') return true;
+      if (s.type === 'content') return s.text?.length > 0;
+      return false;
+    });
+  }, [messages]);
 
   // ── Decisions ────────────────────────────────────────────────────────────
   const onDecide = useCallback((phaseId: string, decision: 'accepted' | 'rejected', proposalId: string) => {
@@ -551,11 +563,12 @@ export default function App() {
               </div>
             ))}
 
-            {/* Kilo-style WorkingIndicator */}
+            {/* Kilo-style WorkingIndicator — only when no content visible yet */}
             <WorkingIndicator
               isProcessing={isProcessing}
               isStreaming={isStreaming}
               iterationCount={iterationCount}
+              lastMessageHasContent={lastMessageHasContent}
             />
 
             <div ref={endRef} />

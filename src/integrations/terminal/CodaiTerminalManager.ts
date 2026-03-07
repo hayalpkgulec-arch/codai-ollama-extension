@@ -34,6 +34,26 @@ const BG_INITIAL_WAIT_MS      = 5_000;   // 5s initial wait
 // Maksimum bekleme (sunucu hala başlıyorsa bile dön)
 const BG_MAX_WAIT_MS          = 15_000;  // 15s hard max
 
+// Interactive stdin bekleme pattern'leri — bunlar görülünce hemen "input needed" dön
+const INTERACTIVE_PATTERNS = [
+    /\(y\/n\)/i,
+    /\(yes\/no\)/i,
+    /Press any key/i,
+    /press enter/i,
+    /Enter your choice/i,
+    /Enter a number/i,
+    /\?\s*$/,             // soru işaretiyle biten satır (npm init vs)
+    /:\s*$/,              // iki nokta üst üste ile biten prompt satırı
+    /password:/i,
+    /Username:/i,
+    /Are you sure/i,
+    /Proceed\?/i,
+    /Continue\?/i,
+    /Overwrite\?/i,
+    /\[Y\/n\]/,
+    /\[y\/N\]/,
+];
+
 // Hata belirten pattern'ler — bunlar görülünce hemen dön
 const ERROR_PATTERNS = [
     /\b(error|Error|ERROR)\b.*:/,
@@ -317,6 +337,8 @@ export async function runCommand(
         let hotTimer:  NodeJS.Timeout | null = null;
         const MAX_BYTES = 512 * 1024; // 512KB
 
+        let interactiveResolve: (() => void) | null = null;
+
         const onData = (chunk: Buffer, isStderr: boolean) => {
             const text = stripAnsi(chunk.toString('utf8'));
             if (isStderr) {
@@ -329,6 +351,12 @@ export async function runCommand(
             if (hotTimer) clearTimeout(hotTimer);
             hotTimer = setTimeout(() => { isHot = false; },
                 isCompilingOutput(text) ? PROCESS_HOT_TIMEOUT_COMPILING : PROCESS_HOT_TIMEOUT_NORMAL);
+
+            // Interactive pattern detect — process is waiting for user input
+            const lastLines = text.split('\n').slice(-3).join('\n');
+            if (!finished && INTERACTIVE_PATTERNS.some(p => p.test(lastLines))) {
+                if (interactiveResolve) interactiveResolve();
+            }
         };
 
         child.stdout?.on('data', (d: Buffer) => onData(d, false));
@@ -490,6 +518,29 @@ export async function runCommand(
                     timedOut: true,
                 });
             }, timeoutMs);
+
+            // Interactive input detect — resolve early with current output + hint
+            interactiveResolve = () => {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                // Kill the waiting process so it doesn't linger
+                try { child.kill(); } catch { /* */ }
+                const lines = buildLines(stdoutRaw, stderrRaw);
+                const hint = '\n[Process is waiting for user input — cannot proceed automatically. Use ask_followup_question to get the needed value from the user, then run the command again with the answer.]';
+                resolve({
+                    status: 'error',
+                    stdout: truncateOutput(lines.stdout) + hint,
+                    stderr: lines.stderrStr,
+                    exitCode: -1,
+                    signal: null,
+                    durationMs: Date.now() - startedAt,
+                    background: false,
+                    autoDetected: false,
+                    truncated: false,
+                    timedOut: false,
+                });
+            };
 
             child.on('close', (code, sig) => {
                 clearTimeout(timer);

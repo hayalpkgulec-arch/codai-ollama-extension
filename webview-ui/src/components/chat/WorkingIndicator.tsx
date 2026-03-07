@@ -8,6 +8,8 @@ interface WorkingIndicatorProps {
   isProcessing: boolean;
   isStreaming: boolean;
   iterationCount: number;
+  /** Son mesajın aktif segment içerip içermediği — doluysa zaten UI gösteriyor, duplicate etme */
+  lastMessageHasContent: boolean;
 }
 
 const MESSAGES = [
@@ -19,7 +21,12 @@ const MESSAGES = [
   'Running tools…',
 ];
 
-export function WorkingIndicator({ isProcessing, isStreaming, iterationCount }: WorkingIndicatorProps) {
+export function WorkingIndicator({
+  isProcessing,
+  isStreaming,
+  iterationCount,
+  lastMessageHasContent,
+}: WorkingIndicatorProps) {
   const [msg, setMsg] = useState(MESSAGES[0]);
 
   useEffect(() => {
@@ -28,7 +35,12 @@ export function WorkingIndicator({ isProcessing, isStreaming, iterationCount }: 
     setMsg(MESSAGES[idx]);
   }, [isProcessing, iterationCount]);
 
-  if (!isProcessing || isStreaming) return null;
+  // Sadece gerçekten "boşta bekliyor" durumunda göster:
+  // - İşlem devam ediyor
+  // - Streaming yok (henüz token gelmiyor)
+  // - Son mesajda görünür içerik yok (thinking/tool/content segment'i yok)
+  //   → aksi halde duplicate "..." görünür
+  if (!isProcessing || isStreaming || lastMessageHasContent) return null;
 
   return (
     <div className="working-indicator" role="status" aria-label="AI is working">
