@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.50] - 2026-03-13
+### Added
+- `web_fetch` now returns citation-ready provenance, canonical URL data, robots/noindex directives, trust warnings, redirect chains, and cache/throttling metadata so the agent can reason about source quality instead of just raw text
+- Fixture-backed regression coverage now exists for malformed HTML, redirect chains, empty shell pages, binary responses, and timeout failures
+- The planning backlog under `.codai/plans/agentic-coding-backlog-20260313/` now tracks milestone progress and gets updated as implementation slices land
+
+### Changed
+- `web_search` now collapses repeated URLs and over-concentrated domains before results reach the model, and the chat renders structured search results as dedicated cards instead of a generic tool pill
+- `web_fetch` cards now surface citation, robots, redirect, cache, throttling, and trust details directly in the chat UI
+
+---
+
 ## [0.0.49] - 2026-03-13
 ### Added
 - `TaskRuntime`, `ToolExecutor`, `ToolPolicyService`, `RuntimeEventBus`, and `MessageStateStore` now form a dedicated runtime layer, so `TaskController` can stay as a facade instead of owning the full agent loop

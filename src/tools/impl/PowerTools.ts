@@ -29,6 +29,10 @@ export class WebFetchTool extends BaseTool {
                         type: 'number',
                         description: 'Request timeout in milliseconds (default: 15000)'
                     },
+                    maxRedirects: {
+                        type: 'number',
+                        description: 'Maximum redirect hops to follow before failing (default: 4)'
+                    },
                     preferCache: {
                         type: 'boolean',
                         description: 'Reuse a recent cached fetch when available (default: true)'
@@ -39,7 +43,7 @@ export class WebFetchTool extends BaseTool {
         };
     }
 
-    async execute(args: { url: string; maxChars?: number; timeoutMs?: number; preferCache?: boolean }): Promise<string> {
+    async execute(args: { url: string; maxChars?: number; timeoutMs?: number; preferCache?: boolean; maxRedirects?: number }): Promise<string> {
         return this.webFetchService.fetch(args);
     }
 }

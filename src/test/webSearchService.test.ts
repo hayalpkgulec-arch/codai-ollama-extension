@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { collapseSearchResults, WebSearchService } from '../services/WebSearchService';
 import { parseDuckDuckGoHtml } from '../services/search/DuckDuckGoHtmlSearchProvider';
-import { WebSearchService } from '../services/WebSearchService';
 
 test('parseDuckDuckGoHtml resolves redirected links and snippets', () => {
     const html = `
@@ -24,7 +24,63 @@ test('parseDuckDuckGoHtml resolves redirected links and snippets', () => {
     assert.equal(results[0].queryIntent, 'documentation');
 });
 
-test('WebSearchService serializes structured success payloads', async () => {
+test('collapseSearchResults removes repeated URLs and over-concentrated hosts', () => {
+    const collapsed = collapseSearchResults([
+        {
+            title: 'Result 1',
+            url: 'https://example.com/a#intro',
+            snippet: 'First result',
+            sourceHost: 'example.com',
+            rank: 1,
+            fetchedAt: '2026-03-13T10:15:00.000Z',
+            queryIntent: 'general',
+        },
+        {
+            title: 'Result 1 duplicate',
+            url: 'https://example.com/a',
+            snippet: 'Duplicate URL',
+            sourceHost: 'example.com',
+            rank: 2,
+            fetchedAt: '2026-03-13T10:15:00.000Z',
+            queryIntent: 'general',
+        },
+        {
+            title: 'Result 2',
+            url: 'https://example.com/b',
+            snippet: 'Second same-host result',
+            sourceHost: 'example.com',
+            rank: 3,
+            fetchedAt: '2026-03-13T10:15:00.000Z',
+            queryIntent: 'general',
+        },
+        {
+            title: 'Result 3',
+            url: 'https://example.com/c',
+            snippet: 'Third same-host result should collapse',
+            sourceHost: 'example.com',
+            rank: 4,
+            fetchedAt: '2026-03-13T10:15:00.000Z',
+            queryIntent: 'general',
+        },
+        {
+            title: 'Different host',
+            url: 'https://docs.example.org/start',
+            snippet: 'Different host should survive',
+            sourceHost: 'docs.example.org',
+            rank: 5,
+            fetchedAt: '2026-03-13T10:15:00.000Z',
+            queryIntent: 'general',
+        },
+    ], 5);
+
+    assert.equal(collapsed.results.length, 3);
+    assert.equal(collapsed.hostCount, 2);
+    assert.equal(collapsed.duplicateUrlCount, 1);
+    assert.equal(collapsed.collapsedHostCount, 1);
+    assert.equal(collapsed.results[0].url, 'https://example.com/a');
+});
+
+test('WebSearchService serializes structured success payloads and collapse metadata', async () => {
     const service = new WebSearchService({
         id: 'fake-search',
         async search() {
@@ -38,6 +94,24 @@ test('WebSearchService serializes structured success payloads', async () => {
                     fetchedAt: '2026-03-13T10:15:00.000Z',
                     queryIntent: 'general',
                 },
+                {
+                    title: 'CodAI Search Result duplicate',
+                    url: 'https://example.com/codai#section',
+                    snippet: 'Should be skipped.',
+                    sourceHost: 'example.com',
+                    rank: 2,
+                    fetchedAt: '2026-03-13T10:15:00.000Z',
+                    queryIntent: 'general',
+                },
+                {
+                    title: 'Second host',
+                    url: 'https://docs.example.org/runtime',
+                    snippet: 'Useful docs.',
+                    sourceHost: 'docs.example.org',
+                    rank: 3,
+                    fetchedAt: '2026-03-13T10:15:00.000Z',
+                    queryIntent: 'general',
+                },
             ];
         },
     });
@@ -48,5 +122,9 @@ test('WebSearchService serializes structured success payloads', async () => {
     assert.equal(parsed.__tool, 'web_search');
     assert.equal(parsed.status, 'success');
     assert.equal(parsed.provider, 'fake-search');
+    assert.equal(parsed.results.length, 2);
     assert.equal(parsed.results[0].url, 'https://example.com/codai');
+    assert.equal(parsed.hostCount, 2);
+    assert.equal(parsed.duplicateUrlCount, 1);
+    assert.ok(parsed.warnings[0].includes('Skipped 1 repeated URL'));
 });

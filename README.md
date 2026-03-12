@@ -61,3 +61,11 @@ CodAI checks for updates from GitHub Releases every 30 minutes. When a new versi
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for full history.
+
+## Development Backlog
+
+Current milestone backlog lives in:
+
+- [requirements.md](.codai/plans/agentic-coding-backlog-20260313/requirements.md)
+- [design.md](.codai/plans/agentic-coding-backlog-20260313/design.md)
+- [tasks.md](.codai/plans/agentic-coding-backlog-20260313/tasks.md)

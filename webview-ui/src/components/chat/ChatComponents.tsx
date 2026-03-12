@@ -619,13 +619,68 @@ function parseWebFetchResult(rawResult?: string) {
       summary?: string;
       url?: string;
       finalUrl?: string;
+      canonicalUrl?: string;
       host?: string;
       statusCode?: number;
       contentType?: string;
       title?: string;
       excerpt?: string;
       links?: Array<{ text?: string; url?: string }>;
+      redirected?: boolean;
+      redirectCount?: number;
+      redirectChain?: Array<{ from?: string; to?: string; statusCode?: number }>;
+      citation?: {
+        title?: string;
+        url?: string;
+        canonicalUrl?: string;
+        host?: string;
+        accessedAt?: string;
+        contentType?: string;
+        statusCode?: number;
+      };
+      robots?: {
+        directives?: string[];
+        noindex?: boolean;
+        nofollow?: boolean;
+        source?: string;
+      };
+      cachePolicy?: 'hit' | 'miss' | 'bypass';
       cached?: boolean;
+      contentTrust?: {
+        level?: 'standard' | 'caution';
+        reasons?: string[];
+      };
+      warnings?: string[];
+      throttledMs?: number;
+      errorMessage?: string;
+      durationMs?: number;
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseWebSearchResult(rawResult?: string) {
+  if (!rawResult || !rawResult.trim().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(rawResult);
+    if (parsed?.__tool !== 'web_search') return null;
+    return parsed as {
+      status: 'success' | 'error';
+      summary?: string;
+      query?: string;
+      provider?: string;
+      hostCount?: number;
+      duplicateUrlCount?: number;
+      collapsedHostCount?: number;
+      warnings?: string[];
+      results?: Array<{
+        title?: string;
+        url?: string;
+        snippet?: string;
+        sourceHost?: string;
+        rank?: number;
+      }>;
       errorMessage?: string;
       durationMs?: number;
     };
@@ -636,7 +691,7 @@ function parseWebFetchResult(rawResult?: string) {
 
 const WebFetchCard = memo(({ tool }: { tool: ToolCall }) => {
   const parsed = parseWebFetchResult(tool.result);
-  const sourceUrl = parsed?.finalUrl || parsed?.url || (tool.args?.url as string) || '';
+  const sourceUrl = parsed?.citation?.url || parsed?.finalUrl || parsed?.url || (tool.args?.url as string) || '';
   let host = parsed?.host || sourceUrl || 'Web source';
   try { host = parsed?.host || new URL(sourceUrl).host; } catch { /* */ }
   const title = parsed?.title || parsed?.summary || host;
@@ -644,9 +699,23 @@ const WebFetchCard = memo(({ tool }: { tool: ToolCall }) => {
   const statusMeta = [
     parsed?.statusCode ? `${parsed.statusCode}` : null,
     parsed?.contentType ? parsed.contentType.replace(/^([^;]+).*$/, '$1') : null,
-    parsed?.cached ? 'cache' : (tool.status === 'running' ? null : 'live'),
+    parsed?.cachePolicy === 'hit'
+      ? 'cache hit'
+      : parsed?.cachePolicy === 'bypass'
+        ? 'cache bypass'
+        : (parsed?.cached ? 'cache' : (tool.status === 'running' ? null : 'live')),
+    parsed?.redirected ? `${parsed.redirectCount || 1} redirect${parsed?.redirectCount === 1 ? '' : 's'}` : null,
+    parsed?.throttledMs ? `throttled ${parsed.throttledMs}ms` : null,
   ].filter(Boolean).join(' · ');
   const lastAlert = tool.controlState?.alerts?.[tool.controlState.alerts.length - 1];
+  const warningLines = [...(parsed?.warnings || [])];
+  if (lastAlert) warningLines.push(lastAlert.message);
+  const robotFlags = [
+    parsed?.robots?.noindex ? 'noindex' : null,
+    parsed?.robots?.nofollow ? 'nofollow' : null,
+  ].filter(Boolean) as string[];
+  const trustReason = parsed?.contentTrust?.reasons?.[0];
+  const citationTitle = parsed?.citation?.title || parsed?.title || host;
 
   if (tool.status === 'running' && !parsed) {
     return <SimplePill tool={tool} icon={<Globe size={11} />} label={host} meta="fetching" />;
@@ -674,6 +743,32 @@ const WebFetchCard = memo(({ tool }: { tool: ToolCall }) => {
         <span>{host}</span>
         {statusMeta && <span>{statusMeta}</span>}
       </div>
+      {parsed?.citation && (
+        <div className="web-fetch-card__citation">
+          <Quote size={10} />
+          <span className="web-fetch-card__citation-label">Citation</span>
+          <button
+            className="web-fetch-card__citation-link"
+            onClick={() => parsed.citation?.url && vscode.postMessage({ type: 'openUrl', url: parsed.citation.url })}
+            disabled={!parsed.citation?.url}
+            title={parsed.citation?.url || citationTitle}
+          >
+            {citationTitle}
+          </button>
+        </div>
+      )}
+      {(robotFlags.length > 0 || trustReason) && (
+        <div className="web-fetch-card__flags">
+          {robotFlags.map((flag) => (
+            <span key={flag} className="web-fetch-card__flag">{flag}</span>
+          ))}
+          {trustReason && (
+            <span className="web-fetch-card__flag web-fetch-card__flag--warning">
+              {trustReason}
+            </span>
+          )}
+        </div>
+      )}
       {excerpt && (
         <div className="web-fetch-card__excerpt">
           {excerpt}
@@ -694,15 +789,86 @@ const WebFetchCard = memo(({ tool }: { tool: ToolCall }) => {
           ))}
         </div>
       )}
-      {lastAlert && (
-        <div className={`web-fetch-card__alert web-fetch-card__alert--${lastAlert.severity === 'error' ? 'error' : 'warning'}`}>
-          {lastAlert.message}
+      {warningLines.map((warning, index) => (
+        <div
+          key={`${warning}-${index}`}
+          className={`web-fetch-card__alert web-fetch-card__alert--${index === warningLines.length - 1 && lastAlert?.message === warning && lastAlert.severity === 'error' ? 'error' : 'warning'}`}
+        >
+          {warning}
         </div>
-      )}
+      ))}
     </div>
   );
 });
 WebFetchCard.displayName = 'WebFetchCard';
+
+const WebSearchCard = memo(({ tool }: { tool: ToolCall }) => {
+  const parsed = parseWebSearchResult(tool.result);
+  const query = parsed?.query || (tool.args?.query as string) || tool.summary || 'Web search';
+  const resultCount = parsed?.results?.length || 0;
+  const meta = [
+    parsed?.provider || null,
+    typeof parsed?.hostCount === 'number' ? `${parsed.hostCount} host${parsed.hostCount === 1 ? '' : 's'}` : null,
+    resultCount > 0 ? `${resultCount} result${resultCount === 1 ? '' : 's'}` : null,
+  ].filter(Boolean).join(' · ');
+  const lastAlert = tool.controlState?.alerts?.[tool.controlState.alerts.length - 1];
+  const warningLines = [...(parsed?.warnings || [])];
+  if (lastAlert) warningLines.push(lastAlert.message);
+
+  if (tool.status === 'running' && !parsed) {
+    return <SimplePill tool={tool} icon={<Search size={11} />} label={query} meta="searching" />;
+  }
+
+  return (
+    <div className={`web-search-card ${tool.status}`}>
+      <div className="web-search-card__header">
+        <div className="web-search-card__title-row">
+          <StatusDot status={tool.status} />
+          <span className="pill-icon"><Search size={11} /></span>
+          <span className="web-search-card__title">{query}</span>
+        </div>
+      </div>
+      {meta && <div className="web-search-card__meta">{meta}</div>}
+      {parsed?.results && parsed.results.length > 0 && (
+        <div className="web-search-card__results">
+          {parsed.results.slice(0, 4).map((result, index) => (
+            <button
+              key={`${result.url || result.title || index}`}
+              className="web-search-card__result"
+              onClick={() => result.url && vscode.postMessage({ type: 'openUrl', url: result.url })}
+              disabled={!result.url}
+              title={result.url || result.title || ''}
+            >
+              <div className="web-search-card__result-head">
+                <span className="web-search-card__result-rank">{index + 1}</span>
+                <span className="web-search-card__result-title">{result.title || result.url || 'Search result'}</span>
+                <ExternalLink size={10} className="web-search-card__result-open" />
+              </div>
+              <div className="web-search-card__result-meta">{result.sourceHost || 'web'}</div>
+              {result.snippet && (
+                <div className="web-search-card__result-snippet">{result.snippet}</div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {parsed?.errorMessage && (
+        <div className="web-fetch-card__alert web-fetch-card__alert--error">
+          {parsed.errorMessage}
+        </div>
+      )}
+      {warningLines.map((warning, index) => (
+        <div
+          key={`${warning}-${index}`}
+          className={`web-fetch-card__alert web-fetch-card__alert--${index === warningLines.length - 1 && lastAlert?.message === warning && lastAlert.severity === 'error' ? 'error' : 'warning'}`}
+        >
+          {warning}
+        </div>
+      ))}
+    </div>
+  );
+});
+WebSearchCard.displayName = 'WebSearchCard';
 
 const GrepCodeCard = memo(({ tool }: { tool: ToolCall }) => {
   const pattern = (tool.args?.pattern as string) || tool.summary;
@@ -922,6 +1088,7 @@ export const ToolCard = memo(({ tool, decision, onDecide }: ToolCardProps) => {
   if (['rename_file', 'move_file'].includes(n)) return <RenameFileCard tool={tool} />;
   if (['get_diagnostics', 'diagnose'].includes(n)) return <DiagnosticsCard tool={tool} />;
   if (n === 'web_fetch') return <WebFetchCard tool={tool} />;
+  if (n === 'web_search') return <WebSearchCard tool={tool} />;
   if (n === 'grep_code') return <GrepCodeCard tool={tool} />;
   if (n === 'create_directory') return <CreateDirCard tool={tool} />;
   if (n === 'get_file_info') return <GetFileInfoCard tool={tool} />;

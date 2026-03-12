@@ -224,13 +224,23 @@ export function compactToolResult(rawResult: string, toolName: string): string {
                     summary: parsed.summary,
                     url: parsed.url,
                     finalUrl: parsed.finalUrl,
+                    canonicalUrl: parsed.canonicalUrl,
                     host: parsed.host,
                     statusCode: parsed.statusCode,
                     contentType: parsed.contentType,
                     title: parsed.title,
                     excerpt: parsed.excerpt,
                     links: Array.isArray(parsed.links) ? parsed.links.slice(0, 6) : [],
+                    redirected: Boolean(parsed.redirected),
+                    redirectCount: typeof parsed.redirectCount === 'number' ? parsed.redirectCount : undefined,
+                    redirectChain: Array.isArray(parsed.redirectChain) ? parsed.redirectChain.slice(0, 4) : [],
+                    citation: parsed.citation || undefined,
+                    robots: parsed.robots || undefined,
+                    cachePolicy: parsed.cachePolicy || undefined,
                     cached: Boolean(parsed.cached),
+                    contentTrust: parsed.contentTrust || undefined,
+                    warnings: Array.isArray(parsed.warnings) ? parsed.warnings.slice(0, 4) : [],
+                    throttledMs: typeof parsed.throttledMs === 'number' ? parsed.throttledMs : undefined,
                     durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined,
                     errorMessage: parsed.errorMessage,
                 });
@@ -242,7 +252,11 @@ export function compactToolResult(rawResult: string, toolName: string): string {
                     summary: parsed.summary,
                     query: parsed.query,
                     provider: parsed.provider,
+                    hostCount: typeof parsed.hostCount === 'number' ? parsed.hostCount : undefined,
+                    duplicateUrlCount: typeof parsed.duplicateUrlCount === 'number' ? parsed.duplicateUrlCount : undefined,
+                    collapsedHostCount: typeof parsed.collapsedHostCount === 'number' ? parsed.collapsedHostCount : undefined,
                     results: Array.isArray(parsed.results) ? parsed.results.slice(0, 5) : [],
+                    warnings: Array.isArray(parsed.warnings) ? parsed.warnings.slice(0, 4) : [],
                     durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined,
                     errorMessage: parsed.errorMessage,
                 });
@@ -263,14 +277,20 @@ export function buildToolArtifacts(toolName: string, rawResult: string): ToolArt
     if (toolName === 'web_fetch' && typeof rawResult === 'string' && rawResult.trim().startsWith('{')) {
         try {
             const parsed = JSON.parse(rawResult);
-            if (typeof parsed.finalUrl === 'string' && parsed.finalUrl) {
-                artifacts.push({ kind: 'url', label: 'Final URL', value: parsed.finalUrl });
+            const citationUrl = typeof parsed.citation?.url === 'string' && parsed.citation.url
+                ? parsed.citation.url
+                : parsed.finalUrl;
+            if (typeof citationUrl === 'string' && citationUrl) {
+                artifacts.push({ kind: 'url', label: 'Source URL', value: citationUrl });
             }
             if (typeof parsed.host === 'string' && parsed.host) {
                 artifacts.push({ kind: 'host', label: 'Host', value: parsed.host });
             }
             if (typeof parsed.title === 'string' && parsed.title) {
                 artifacts.push({ kind: 'note', label: 'Title', value: parsed.title });
+            }
+            if (Array.isArray(parsed.warnings) && parsed.warnings[0]) {
+                artifacts.push({ kind: 'note', label: 'Warning', value: parsed.warnings[0] });
             }
             return artifacts;
         } catch {
@@ -285,6 +305,9 @@ export function buildToolArtifacts(toolName: string, rawResult: string): ToolArt
             }
             if (Array.isArray(parsed.results) && parsed.results[0]?.url) {
                 artifacts.push({ kind: 'url', label: 'Top result', value: parsed.results[0].url });
+            }
+            if (typeof parsed.hostCount === 'number') {
+                artifacts.push({ kind: 'note', label: 'Hosts', value: String(parsed.hostCount) });
             }
             return artifacts;
         } catch {
@@ -396,6 +419,8 @@ export function normalizeToolResult(
                     failureClass: parsed.status === 'error' ? 'execution' : 'none',
                     status: parsed.status === 'error' ? 'error' : 'success',
                     summary: parsed.summary || summary,
+                    citation: parsed.citation || undefined,
+                    warnings: Array.isArray(parsed.warnings) ? parsed.warnings : undefined,
                     durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : finishedAt - startedAt,
                     errorMessage: parsed.errorMessage || '',
                 };
@@ -409,6 +434,10 @@ export function normalizeToolResult(
                     status: parsed.status === 'error' ? 'error' : 'success',
                     summary: parsed.summary || summary,
                     results: Array.isArray(parsed.results) ? parsed.results : [],
+                    hostCount: typeof parsed.hostCount === 'number' ? parsed.hostCount : undefined,
+                    duplicateUrlCount: typeof parsed.duplicateUrlCount === 'number' ? parsed.duplicateUrlCount : undefined,
+                    collapsedHostCount: typeof parsed.collapsedHostCount === 'number' ? parsed.collapsedHostCount : undefined,
+                    warnings: Array.isArray(parsed.warnings) ? parsed.warnings : undefined,
                     errorMessage: parsed.errorMessage || '',
                     durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : finishedAt - startedAt,
                 };
