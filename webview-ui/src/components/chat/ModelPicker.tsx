@@ -48,7 +48,7 @@ export const ModelPicker = memo(({ models, selected, onChange, disabled }: Model
     const pick = (m: ModelDef) => { onChange(m); setOpen(false); setQuery(''); };
 
     return (
-        <div className="model-picker" ref={ref}>
+        <div className={`model-picker${open ? ' open' : ''}`} ref={ref}>
             <button
                 className="model-picker-trigger"
                 onClick={() => !disabled && setOpen(o => !o)}

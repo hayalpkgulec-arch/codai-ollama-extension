@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.41] - 2026-03-12
+### Fixed
+- Chat composer shadow was toned down so the footer no longer looks detached from the panel
+- Mode and model dropdowns now stay above the composer instead of getting clipped under the input area
+
+### Changed
+- Composer buttons and selector pills were tightened up for a smaller, cleaner bottom control strip
+
+---
+
 ## [0.0.40] - 2026-03-12
 ### Changed
 - Chat composer refreshed with a larger rounded shell and cleaner bottom action strip inspired by the new reference layout
