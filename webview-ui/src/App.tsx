@@ -19,7 +19,7 @@ import { ProviderSettings } from './components/settings/ProviderSettings';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
 import type { AutoApproveConfig } from './types';
-import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare, Bot } from 'lucide-react';
+import { ArrowUp, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare, Bot } from 'lucide-react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
 
@@ -776,73 +776,77 @@ export default function App() {
 
       {/* ── Input Bar ── */}
       <div className={`input-bar${isProcessing ? ' processing' : ''}`}>
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={onInput}
-          onKeyDown={onKey}
-          rows={1}
-          disabled={isProcessing}
-          placeholder="Ask anything, @ to mention, / for commands…"
-          className="chat-textarea"
-        />
-
-        <div className="input-bottom-row">
-          <div className="input-bottom-left">
-            {/* Aktif dosyayı context olarak ekle */}
-            <div className="context-btn-wrap">
-              <button
-                className={`input-plus-btn${activeFileContext ? ' has-context' : ''}`}
-                title={activeFileContext ? 'Remove file context' : 'Add active file as context'}
-                onClick={handleContextBtn}
-              >
-                <Plus size={13} />
-              </button>
-              {showContextPopup && !activeFileContext && (
-                <div className="context-popup">Fetching active file…</div>
-              )}
-            </div>
-            <ModeSelector selected={selectedMode} onChange={handleModeChange} disabled={isProcessing} />
-            <ModelPicker models={allModels} selected={model} onChange={handleModelChange} disabled={isProcessing} />
-
-            {/* Terminal button — opens CodAI terminal */}
-            <button
-              className="input-icon-btn"
-              title="Open CodAI terminal"
-              onClick={() => vscode.postMessage({ type: 'runInTerminal', command: '' })}
-            >
-              <Terminal size={12} />
-            </button>
-
-            {/* Diff view — open last modified file in diff */}
-            <button
-              className="input-icon-btn"
-              title="Open last file diff in VSCode"
-              onClick={() => vscode.postMessage({ type: 'showDiff', path: '' })}
-            >
-              <GitCompare size={12} />
-            </button>
-
-            {/* Background agent status indicator */}
-            {isProcessing && (
-              <div className="agent-status-pill" title={`Agent running · iteration ${iterationCount}`}>
-                <Bot size={11} className="agent-status-icon spin-slow" />
-                <span className="agent-status-label">
-                  {iterationCount > 1 ? `iter ${iterationCount}` : 'working'}
-                </span>
-              </div>
-            )}
+        <div className="input-shell">
+          <div className="input-editor">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={onInput}
+              onKeyDown={onKey}
+              rows={1}
+              disabled={isProcessing}
+              placeholder="Ask anything, mention files, or use / commands"
+              className="chat-textarea"
+            />
           </div>
 
-          <div className="input-bottom-right">
-            <button
-              className={`send-stop-btn${isProcessing ? ' stop' : ' send'}`}
-              onClick={isProcessing ? handleStop : send}
-              disabled={!isProcessing && !input.trim()}
-              title={isProcessing ? 'Stop generation' : 'Send (Enter)'}
-            >
-              {isProcessing ? <Square size={12} /> : <Send size={12} />}
-            </button>
+          <div className="input-bottom-row">
+            <div className="input-bottom-left">
+              {/* Aktif dosyayı context olarak ekle */}
+              <div className="context-btn-wrap">
+                <button
+                  className={`input-plus-btn${activeFileContext ? ' has-context' : ''}`}
+                  title={activeFileContext ? 'Remove file context' : 'Add active file as context'}
+                  onClick={handleContextBtn}
+                >
+                  <Plus size={13} />
+                </button>
+                {showContextPopup && !activeFileContext && (
+                  <div className="context-popup">Fetching active file…</div>
+                )}
+              </div>
+              <ModeSelector selected={selectedMode} onChange={handleModeChange} disabled={isProcessing} />
+              <ModelPicker models={allModels} selected={model} onChange={handleModelChange} disabled={isProcessing} />
+
+              {/* Terminal button — opens CodAI terminal */}
+              <button
+                className="input-icon-btn"
+                title="Open CodAI terminal"
+                onClick={() => vscode.postMessage({ type: 'runInTerminal', command: '' })}
+              >
+                <Terminal size={12} />
+              </button>
+
+              {/* Diff view — open last modified file in diff */}
+              <button
+                className="input-icon-btn"
+                title="Open last file diff in VSCode"
+                onClick={() => vscode.postMessage({ type: 'showDiff', path: '' })}
+              >
+                <GitCompare size={12} />
+              </button>
+
+              {/* Background agent status indicator */}
+              {isProcessing && (
+                <div className="agent-status-pill" title={`Agent running · iteration ${iterationCount}`}>
+                  <Bot size={11} className="agent-status-icon spin-slow" />
+                  <span className="agent-status-label">
+                    {iterationCount > 1 ? `iter ${iterationCount}` : 'working'}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="input-bottom-right">
+              <button
+                className={`send-stop-btn${isProcessing ? ' stop' : ' send'}`}
+                onClick={isProcessing ? handleStop : send}
+                disabled={!isProcessing && !input.trim()}
+                title={isProcessing ? 'Stop generation' : 'Send (Enter)'}
+              >
+                {isProcessing ? <Square size={12} /> : <ArrowUp size={14} />}
+              </button>
+            </div>
           </div>
         </div>
       </div>

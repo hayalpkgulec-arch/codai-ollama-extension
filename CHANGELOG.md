@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.40] - 2026-03-12
+### Changed
+- Chat composer refreshed with a larger rounded shell and cleaner bottom action strip inspired by the new reference layout
+- Send control now uses a compact circular arrow treatment and the input footer controls sit inside the same composer card
+
+---
+
 ## [0.0.39] - 2026-03-12
 ### Fixed
 - Auto-update now re-checks when the VS Code window regains focus, so newly published releases do not get missed as easily in long-running sessions
