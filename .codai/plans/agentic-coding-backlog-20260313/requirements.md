@@ -17,3 +17,4 @@
 
 - 2026-03-13: Started implementing the P0 web-tool hardening milestone. The runtime now preserves structured web-source provenance and guards against repetitive, low-signal search/fetch patterns before the model sees them.
 - 2026-03-13: Finished the first milestone slice end-to-end. Structured web results now have dedicated UI, and regression coverage exists for the failure shapes that previously made tool behavior brittle.
+- 2026-03-13: Finished the browser-session milestone slice end-to-end. The agent can now open a local browser session through dedicated tools, persist screenshot and console artifacts per session, surface browser state in runtime/debug views, and recover cleanly from browser crashes without poisoning later turns.

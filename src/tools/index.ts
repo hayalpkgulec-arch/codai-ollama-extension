@@ -17,6 +17,16 @@ import {
 import { ReadMultipleFilesTool, ListDirectoryTreeTool } from './impl/ReadMultipleFilesTool';
 import { WriteMultipleFilesTool, DeleteMultipleFilesTool } from './impl/BatchFileTools';
 import { SavePlanTool } from './impl/SavePlanTool';
+import {
+    BrowserNavigateTool,
+    BrowserClickTool,
+    BrowserTypeTool,
+    BrowserScrollTool,
+    BrowserWaitForTextTool,
+    BrowserScreenshotTool,
+    BrowserConsoleLogsTool,
+    BrowserCloseTool,
+} from './impl/BrowserTools';
 
 // ── Core file tools ──────────────────────────────────────────────────────────
 globalToolRegistry.registerTool(new ReadFileTool());
@@ -41,6 +51,14 @@ globalToolRegistry.registerTool(new CreateDirectoryTool());
 globalToolRegistry.registerTool(new GetFileInfoTool());
 globalToolRegistry.registerTool(new FindAndReplaceTool());
 globalToolRegistry.registerTool(new AppendToFileTool());
+globalToolRegistry.registerTool(new BrowserNavigateTool());
+globalToolRegistry.registerTool(new BrowserClickTool());
+globalToolRegistry.registerTool(new BrowserTypeTool());
+globalToolRegistry.registerTool(new BrowserScrollTool());
+globalToolRegistry.registerTool(new BrowserWaitForTextTool());
+globalToolRegistry.registerTool(new BrowserScreenshotTool());
+globalToolRegistry.registerTool(new BrowserConsoleLogsTool());
+globalToolRegistry.registerTool(new BrowserCloseTool());
 
 // ── Diagnostic tools ─────────────────────────────────────────────────────────
 globalToolRegistry.registerTool(new GetDiagnosticsTool());

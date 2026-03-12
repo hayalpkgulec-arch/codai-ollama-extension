@@ -25,6 +25,14 @@ const DEFAULT_TOOL_MANIFESTS: Record<string, ToolManifest> = {
 
     web_fetch: { name: 'web_fetch', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: true, sideEffectScope: 'network' },
     web_search: { name: 'web_search', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: true, sideEffectScope: 'network' },
+    browser_navigate: { name: 'browser_navigate', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: true, sideEffectScope: 'network' },
+    browser_click: { name: 'browser_click', category: 'web', riskLevel: 'high', requiresApproval: true, supportsAutoApprove: true, producesCheckpoint: false, idempotent: false, sideEffectScope: 'network' },
+    browser_type: { name: 'browser_type', category: 'web', riskLevel: 'high', requiresApproval: true, supportsAutoApprove: true, producesCheckpoint: false, idempotent: false, sideEffectScope: 'network' },
+    browser_scroll: { name: 'browser_scroll', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: false, sideEffectScope: 'network' },
+    browser_wait_for_text: { name: 'browser_wait_for_text', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: false, sideEffectScope: 'network' },
+    browser_screenshot: { name: 'browser_screenshot', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: true, sideEffectScope: 'network' },
+    browser_console_logs: { name: 'browser_console_logs', category: 'web', riskLevel: 'low', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: true, sideEffectScope: 'network' },
+    browser_close: { name: 'browser_close', category: 'web', riskLevel: 'medium', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: true, sideEffectScope: 'network' },
 
     task_notes: { name: 'task_notes', category: 'plan', riskLevel: 'low', requiresApproval: false, supportsAutoApprove: true, producesCheckpoint: false, idempotent: false, sideEffectScope: 'workspace' },
     save_plan: { name: 'save_plan', category: 'plan', riskLevel: 'medium', requiresApproval: true, supportsAutoApprove: true, producesCheckpoint: true, idempotent: false, sideEffectScope: 'filesystem' },

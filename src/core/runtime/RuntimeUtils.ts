@@ -11,6 +11,8 @@ export function normalizeToolName(toolName: string): string {
         'read_multiple_files', 'write_multiple_files', 'delete_multiple_files',
         'search_files', 'grep_code', 'run_command', 'delete_file', 'rename_file',
         'get_diagnostics', 'web_fetch', 'web_search', 'create_directory', 'get_file_info',
+        'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll',
+        'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
         'find_and_replace', 'append_to_file', 'task_notes', 'ask_followup_question',
         'ask_followup_questions', 'attempt_completion', 'save_plan',
     ];
@@ -40,6 +42,14 @@ export function normalizeToolName(toolName: string): string {
         rm: 'delete_file', remove_file: 'delete_file', unlink: 'delete_file',
         mv: 'rename_file', move_file: 'rename_file',
         fetch: 'web_fetch', http_get: 'web_fetch', curl: 'web_fetch',
+        navigate: 'browser_navigate', browser_navigate_to: 'browser_navigate',
+        click: 'browser_click',
+        type: 'browser_type',
+        scroll: 'browser_scroll',
+        wait_for_text: 'browser_wait_for_text', waitfortext: 'browser_wait_for_text',
+        screenshot: 'browser_screenshot',
+        console_logs: 'browser_console_logs', get_console_logs: 'browser_console_logs',
+        close: 'browser_close', browser_close_session: 'browser_close',
     };
 
     return aliasMap[normalized] || normalized;
@@ -79,6 +89,14 @@ export function buildToolSummary(toolName: string, args: any): string {
         get_diagnostics: pathName ? `Diagnose ${pathName}` : 'Diagnose workspace',
         web_fetch: args?.url ? `Fetch ${args.url}` : 'Fetch URL',
         web_search: args?.query ? `Search web: ${String(args.query).slice(0, 40)}` : 'Search web',
+        browser_navigate: args?.url ? `Open ${String(args.url).slice(0, 48)}` : 'Navigate browser',
+        browser_click: args?.selector ? `Click ${String(args.selector).slice(0, 36)}` : 'Click element',
+        browser_type: args?.selector ? `Type into ${String(args.selector).slice(0, 30)}` : 'Type in browser',
+        browser_scroll: 'Scroll browser',
+        browser_wait_for_text: args?.text ? `Wait for "${String(args.text).slice(0, 24)}"` : 'Wait for text',
+        browser_screenshot: 'Capture browser screenshot',
+        browser_console_logs: 'Capture browser console logs',
+        browser_close: 'Close browser',
         create_directory: pathName ? `Create dir ${pathName}` : 'Create directory',
         get_file_info: pathName ? `Info ${pathName}` : 'File info',
         find_and_replace: pathName ? `Replace in ${pathName}` : 'Find & replace',
@@ -261,6 +279,22 @@ export function compactToolResult(rawResult: string, toolName: string): string {
                     errorMessage: parsed.errorMessage,
                 });
             }
+            if (parsed.__tool === 'browser_action') {
+                return JSON.stringify({
+                    __tool: 'browser_action',
+                    action: parsed.action,
+                    status: parsed.status,
+                    summary: parsed.summary,
+                    sessionId: parsed.sessionId,
+                    currentUrl: parsed.currentUrl,
+                    domSummary: parsed.domSummary,
+                    consoleSummary: parsed.consoleSummary,
+                    screenshotPath: parsed.screenshotPath,
+                    artifactIds: Array.isArray(parsed.artifactIds) ? parsed.artifactIds.slice(0, 4) : [],
+                    durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : undefined,
+                    errorMessage: parsed.errorMessage,
+                });
+            }
         } catch {
             // fallthrough to generic truncation
         }
@@ -308,6 +342,30 @@ export function buildToolArtifacts(toolName: string, rawResult: string): ToolArt
             }
             if (typeof parsed.hostCount === 'number') {
                 artifacts.push({ kind: 'note', label: 'Hosts', value: String(parsed.hostCount) });
+            }
+            return artifacts;
+        } catch {
+            return artifacts;
+        }
+    }
+    if (
+        [
+            'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll',
+            'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
+        ].includes(toolName)
+        && typeof rawResult === 'string'
+        && rawResult.trim().startsWith('{')
+    ) {
+        try {
+            const parsed = JSON.parse(rawResult);
+            if (typeof parsed.currentUrl === 'string' && parsed.currentUrl) {
+                artifacts.push({ kind: 'url', label: 'Current URL', value: parsed.currentUrl });
+            }
+            if (typeof parsed.screenshotPath === 'string' && parsed.screenshotPath) {
+                artifacts.push({ kind: 'file', label: 'Screenshot', value: parsed.screenshotPath });
+            }
+            if (typeof parsed.consoleSummary === 'string' && parsed.consoleSummary) {
+                artifacts.push({ kind: 'note', label: 'Console', value: parsed.consoleSummary.slice(0, 180) });
             }
             return artifacts;
         } catch {
@@ -438,6 +496,24 @@ export function normalizeToolResult(
                     duplicateUrlCount: typeof parsed.duplicateUrlCount === 'number' ? parsed.duplicateUrlCount : undefined,
                     collapsedHostCount: typeof parsed.collapsedHostCount === 'number' ? parsed.collapsedHostCount : undefined,
                     warnings: Array.isArray(parsed.warnings) ? parsed.warnings : undefined,
+                    errorMessage: parsed.errorMessage || '',
+                    durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : finishedAt - startedAt,
+                };
+            }
+            if (parsed && parsed.__tool === 'browser_action') {
+                return {
+                    ...base,
+                    toolCallId: '',
+                    historyContent: rawResult,
+                    failureClass: parsed.status === 'error' ? 'execution' : 'none',
+                    status: parsed.status === 'error' ? 'error' : 'success',
+                    summary: parsed.summary || summary,
+                    currentUrl: parsed.currentUrl || '',
+                    domSummary: parsed.domSummary || '',
+                    consoleSummary: parsed.consoleSummary || '',
+                    screenshotPath: parsed.screenshotPath || '',
+                    artifactIds: Array.isArray(parsed.artifactIds) ? parsed.artifactIds : [],
+                    browserSessionState: parsed.browserSessionState || undefined,
                     errorMessage: parsed.errorMessage || '',
                     durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : finishedAt - startedAt,
                 };

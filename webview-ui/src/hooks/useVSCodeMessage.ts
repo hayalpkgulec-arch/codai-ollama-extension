@@ -10,6 +10,7 @@ import type {
   ContextWindowStats,
   ContextPreviewPayload,
   LatestTraceSummary,
+  BrowserSessionState,
   ToolControlState,
   TurnState,
 } from '../types';
@@ -63,6 +64,14 @@ function buildToolSummaryFromHistory(fnName: string, args: any): string {
     get_diagnostics: pathBase ? `Diagnose ${pathBase}` : 'Diagnose workspace',
     web_fetch: args?.url ? `Fetch ${args.url}` : 'Web fetch',
     web_search: args?.query ? `Search ${String(args.query).slice(0, 40)}` : 'Web search',
+    browser_navigate: args?.url ? `Open ${String(args.url).slice(0, 40)}` : 'Navigate browser',
+    browser_click: args?.selector ? `Click ${String(args.selector).slice(0, 32)}` : 'Browser click',
+    browser_type: args?.selector ? `Type into ${String(args.selector).slice(0, 28)}` : 'Browser type',
+    browser_scroll: 'Browser scroll',
+    browser_wait_for_text: args?.text ? `Wait for ${String(args.text).slice(0, 24)}` : 'Wait for text',
+    browser_screenshot: 'Browser screenshot',
+    browser_console_logs: 'Browser console logs',
+    browser_close: 'Close browser',
     create_directory: pathBase ? `Create dir ${pathBase}` : 'Create directory',
     get_file_info: pathBase ? `Info ${pathBase}` : 'File info',
     find_and_replace: pathBase ? `Replace in ${pathBase}` : 'Find & replace',
@@ -156,6 +165,7 @@ export function useVSCodeMessage() {
   const [latestTrace, setLatestTrace] = useState<LatestTraceSummary | null>(null);
   const [turnState, setTurnState] = useState<TurnState | null>(null);
   const [toolControlState, setToolControlState] = useState<ToolControlState | null>(null);
+  const [browserSessionState, setBrowserSessionState] = useState<BrowserSessionState | null>(null);
   const [toolControlNotice, setToolControlNotice] = useState<{ severity: 'info' | 'warning' | 'error'; message: string } | null>(null);
   const [preflightNotice, setPreflightNotice] = useState<{ severity: 'warning' | 'error'; warnings: string[]; errors: string[] } | null>(null);
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
@@ -227,6 +237,7 @@ export function useVSCodeMessage() {
           setLatestTrace(msg.latestTrace || null);
           setTurnState(msg.turnState || null);
           setToolControlState(msg.toolControlState || null);
+          setBrowserSessionState(msg.browserSessionState || null);
           setToolControlNotice(null);
           setPreflightNotice(null);
           setResumeNotice(
@@ -357,6 +368,7 @@ export function useVSCodeMessage() {
             startedAt: (msg.startedAt as number) || Date.now(),
             manifest: msg.manifest || undefined,
             controlState: msg.controlState || null,
+            browserSessionState: msg.browserSessionState || null,
           };
           const toolSeg: Segment = { type: 'tool', tool: newTool };
 
@@ -412,6 +424,7 @@ export function useVSCodeMessage() {
                     finishedAt: (msg.finishedAt as number) || Date.now(),
                     manifest: msg.manifest || seg.tool.manifest,
                     controlState: msg.controlState || seg.tool.controlState || null,
+                    browserSessionState: msg.browserSessionState || seg.tool.browserSessionState || null,
                     // write_file için extra fields
                     ...(msg.hunks !== undefined ? {
                       hunks: msg.hunks,
@@ -568,6 +581,7 @@ export function useVSCodeMessage() {
           setPlanSaved(null);
           setTurnState(null);
           setToolControlState(null);
+          setBrowserSessionState(msg.browserSessionState || null);
           setIterationCount(0);
           bumpScroll();
           break;
@@ -579,6 +593,7 @@ export function useVSCodeMessage() {
           setLatestTrace(null);
           setTurnState(null);
           setToolControlState(null);
+          setBrowserSessionState(null);
           setToolControlNotice(null);
           setPreflightNotice(null);
           setResumeNotice(null);
@@ -686,6 +701,12 @@ export function useVSCodeMessage() {
         case 'toolControlState':
           if (msg?.turnId) {
             setToolControlState(msg as ToolControlState);
+          }
+          break;
+
+        case 'browserSessionState':
+          if (typeof msg?.active === 'boolean') {
+            setBrowserSessionState(msg as BrowserSessionState);
           }
           break;
 
@@ -801,6 +822,7 @@ export function useVSCodeMessage() {
     latestTrace,
     turnState,
     toolControlState,
+    browserSessionState,
     toolControlNotice,
     preflightNotice,
     resumeNotice,

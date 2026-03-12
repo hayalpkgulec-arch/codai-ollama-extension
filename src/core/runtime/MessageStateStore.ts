@@ -1,6 +1,14 @@
 import * as vscode from 'vscode';
 import type { AgentMode } from '../types';
-import type { LatestTraceSummary, RuntimeSnapshot, StoredSessionHistory, ToolControlState, TurnState } from '../../services/runtimeTypes';
+import type {
+    BrowserArtifactEntry,
+    BrowserSessionState,
+    LatestTraceSummary,
+    RuntimeSnapshot,
+    StoredSessionHistory,
+    ToolControlState,
+    TurnState,
+} from '../../services/runtimeTypes';
 import { WorkspaceStorage } from '../../services/WorkspaceStorage';
 import { WorkspaceManager } from '../../services/WorkspaceManager';
 import { TurnTraceService } from '../../services/TurnTraceService';
@@ -22,6 +30,8 @@ export class MessageStateStore {
         private readonly workspaceManager: WorkspaceManager,
         private readonly traceService: TurnTraceService,
         private readonly getToolControlState: () => ToolControlState | null,
+        private readonly getBrowserSessionState: () => BrowserSessionState | null,
+        private readonly getBrowserArtifactsIndex: () => BrowserArtifactEntry[],
     ) {}
 
     public async getSessions(): Promise<any[]> {
@@ -117,7 +127,7 @@ export class MessageStateStore {
                 checkpoints: [],
                 driftWarnings: [],
             },
-            browserSessionState: {
+            browserSessionState: this.getBrowserSessionState() ?? {
                 active: false,
                 artifactCount: 0,
             },
@@ -128,7 +138,7 @@ export class MessageStateStore {
             messages,
             messageState: this.workspaceManager.getSessionSnapshot(),
             runtimeSnapshots,
-            browserArtifactsIndex: [],
+            browserArtifactsIndex: this.getBrowserArtifactsIndex(),
             goalSnapshots: runtimeSnapshots
                 .map((snapshot) => snapshot.goalControlState)
                 .filter((snapshot): snapshot is NonNullable<typeof snapshot> => Boolean(snapshot)),

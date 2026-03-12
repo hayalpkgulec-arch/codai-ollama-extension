@@ -35,6 +35,24 @@ export class WorkspaceStorage {
         return path.join(this.workspaceDir, 'traces', `${turnId}.jsonl`);
     }
 
+    public getBrowserArtifactsDir(sessionId?: string): string {
+        const baseDir = path.join(this.workspaceDir, 'browser');
+        return sessionId ? path.join(baseDir, sessionId) : baseDir;
+    }
+
+    public getBrowserArtifactFilePath(sessionId: string, artifactId: string, extension: string): string {
+        const normalizedExtension = extension.startsWith('.') ? extension.slice(1) : extension;
+        return path.join(this.getBrowserArtifactsDir(sessionId), `${artifactId}.${normalizedExtension}`);
+    }
+
+    public readBrowserArtifactsIndex<T>(fallback: T): T {
+        return this.readJsonSync(path.join(this.getBrowserArtifactsDir(), 'index.json'), fallback);
+    }
+
+    public async writeBrowserArtifactsIndex<T>(value: T): Promise<void> {
+        await this.writeJson(path.join(this.getBrowserArtifactsDir(), 'index.json'), value);
+    }
+
     public readWorkspaceState<T>(fallback: T): T {
         const file = path.join(this.workspaceDir, 'state.json');
         return this.readJsonSync(file, fallback);
@@ -104,6 +122,7 @@ export class WorkspaceStorage {
             path.join(this.workspaceDir, 'memories'),
             path.join(this.workspaceDir, 'traces'),
             path.join(this.workspaceDir, 'indexes'),
+            path.join(this.workspaceDir, 'browser'),
         ];
         for (const dirPath of dirs) {
             fs.mkdirSync(dirPath, { recursive: true });

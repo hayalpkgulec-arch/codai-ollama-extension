@@ -11,11 +11,11 @@
 
 ## v0.0.51 Browser Session
 
-- [ ] Add a local-first `BrowserSession` service
-- [ ] Add browser tools: `navigate`, `click`, `type`, `scroll`, `wait_for_text`, `screenshot`, `console_logs`, `close`
-- [ ] Persist browser artifacts under workspace storage
-- [ ] Attach browser session state to runtime trace payloads
-- [ ] Add smoke coverage for browser crash recovery and session cleanup
+- [x] Add a local-first `BrowserSession` service
+- [x] Add browser tools: `navigate`, `click`, `type`, `scroll`, `wait_for_text`, `screenshot`, `console_logs`, `close`
+- [x] Persist browser artifacts under workspace storage
+- [x] Attach browser session state to runtime trace payloads
+- [x] Add smoke coverage for browser crash recovery and session cleanup
 
 ## v0.0.52 UI And State Refactor
 
@@ -52,3 +52,4 @@
 
 - 2026-03-13: Completed the backend half of `v0.0.50` by hardening `web_fetch` with citation, redirect, robots, trust, cache, and throttling metadata, and by collapsing duplicate/over-concentrated `web_search` results before they reach the model.
 - 2026-03-13: Completed the UI and test half of `v0.0.50` by adding dedicated `web_search` cards, richer `web_fetch` cards, and fixture-backed coverage for malformed pages, redirects, empty shells, timeouts, and binary responses.
+- 2026-03-13: Completed `v0.0.51` by adding a local-first browser session service, first-party browser tools, workspace-backed screenshot and console artifacts, runtime/browser trace state, and crash-recovery tests for browser cleanup flows.

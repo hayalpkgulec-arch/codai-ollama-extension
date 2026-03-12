@@ -142,6 +142,18 @@ export interface ToolControlState {
   recommendedAction: string;
 }
 
+export interface BrowserSessionState {
+  active: boolean;
+  sessionId?: string;
+  currentUrl?: string;
+  lastAction?: string;
+  artifactCount: number;
+  lastActionAt?: number;
+  lastArtifactPath?: string;
+  lastError?: string;
+  consoleMessageCount?: number;
+}
+
 // ── Auto-approve config ───────────────────────────────────────────────────────
 export interface AutoApproveConfig {
   read_file: boolean;
@@ -205,6 +217,7 @@ export interface ToolCall {
   finishedAt?: number;
   manifest?: ToolManifest;
   controlState?: ToolControlState | null;
+  browserSessionState?: BrowserSessionState | null;
 }
 
 // ── Ordered timeline segments within a message ────────────────────────────

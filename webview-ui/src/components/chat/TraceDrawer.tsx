@@ -1,4 +1,4 @@
-import type { LatestTraceSummary, ToolControlState, TurnState } from '../../types';
+import type { BrowserSessionState, LatestTraceSummary, ToolControlState, TurnState } from '../../types';
 
 interface PreflightNotice {
   severity: 'warning' | 'error';
@@ -11,6 +11,7 @@ interface TraceDrawerProps {
   latestTrace: LatestTraceSummary | null;
   turnState: TurnState | null;
   toolControlState: ToolControlState | null;
+  browserSessionState: BrowserSessionState | null;
   preflightNotice: PreflightNotice | null;
   resumeNotice: string | null;
   onClose: () => void;
@@ -27,6 +28,7 @@ export function TraceDrawer({
   latestTrace,
   turnState,
   toolControlState,
+  browserSessionState,
   preflightNotice,
   resumeNotice,
   onClose,
@@ -165,6 +167,37 @@ export function TraceDrawer({
                     {action.toolName}: {action.status}
                   </span>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {browserSessionState && (
+          <div className="side-drawer-card">
+            <div className="side-drawer-card-title">Browser session</div>
+            <div className="side-drawer-meta-row">
+              <span>Active</span>
+              <strong>{browserSessionState.active ? 'yes' : 'no'}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Current URL</span>
+              <strong>{browserSessionState.currentUrl || '-'}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Last action</span>
+              <strong>{browserSessionState.lastAction || '-'}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Artifacts</span>
+              <strong>{browserSessionState.artifactCount}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Console messages</span>
+              <strong>{browserSessionState.consoleMessageCount ?? 0}</strong>
+            </div>
+            {browserSessionState.lastError && (
+              <div className="side-drawer-notice side-drawer-notice--error">
+                {browserSessionState.lastError}
               </div>
             )}
           </div>

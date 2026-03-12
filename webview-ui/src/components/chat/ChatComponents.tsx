@@ -10,6 +10,7 @@ import {
   Move, Search, Stethoscope, Globe, Code2,
   FolderPlus, Info, Replace, RefreshCw, Files, FolderTree, Layers,
   ExternalLink, GitCompare, Send, Quote, RotateCcw,
+  Monitor, MousePointerClick, Camera, Logs,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -689,6 +690,34 @@ function parseWebSearchResult(rawResult?: string) {
   }
 }
 
+function parseBrowserActionResult(rawResult?: string) {
+  if (!rawResult || !rawResult.trim().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(rawResult);
+    if (parsed?.__tool !== 'browser_action') return null;
+    return parsed as {
+      action?: string;
+      status: 'success' | 'error';
+      summary?: string;
+      currentUrl?: string;
+      domSummary?: string;
+      consoleSummary?: string;
+      screenshotPath?: string;
+      artifactIds?: string[];
+      errorMessage?: string;
+      browserSessionState?: {
+        active?: boolean;
+        currentUrl?: string;
+        lastAction?: string;
+        artifactCount?: number;
+        consoleMessageCount?: number;
+      };
+    };
+  } catch {
+    return null;
+  }
+}
+
 const WebFetchCard = memo(({ tool }: { tool: ToolCall }) => {
   const parsed = parseWebFetchResult(tool.result);
   const sourceUrl = parsed?.citation?.url || parsed?.finalUrl || parsed?.url || (tool.args?.url as string) || '';
@@ -869,6 +898,77 @@ const WebSearchCard = memo(({ tool }: { tool: ToolCall }) => {
   );
 });
 WebSearchCard.displayName = 'WebSearchCard';
+
+const BrowserActionCard = memo(({ tool }: { tool: ToolCall }) => {
+  const parsed = parseBrowserActionResult(tool.result);
+  const action = parsed?.action || tool.name.replace(/^browser_/, '');
+  const currentUrl = parsed?.currentUrl || parsed?.browserSessionState?.currentUrl || '';
+  let host = currentUrl || 'Local browser';
+  try { host = currentUrl ? new URL(currentUrl).host : host; } catch { /* */ }
+  const title = parsed?.summary || tool.summary || 'Browser action';
+  const detail = parsed?.domSummary || parsed?.consoleSummary || parsed?.errorMessage || '';
+  const meta = [
+    parsed?.browserSessionState?.active ? 'session active' : 'session idle',
+    typeof parsed?.browserSessionState?.artifactCount === 'number' ? `${parsed.browserSessionState.artifactCount} artifacts` : null,
+    typeof parsed?.browserSessionState?.consoleMessageCount === 'number' ? `${parsed.browserSessionState.consoleMessageCount} console` : null,
+  ].filter(Boolean).join(' · ');
+  const actionIcon = action === 'click'
+    ? <MousePointerClick size={11} />
+    : action === 'screenshot'
+      ? <Camera size={11} />
+      : action === 'console_logs'
+        ? <Logs size={11} />
+        : <Monitor size={11} />;
+
+  if (tool.status === 'running' && !parsed) {
+    return <SimplePill tool={tool} icon={actionIcon} label={tool.summary} meta="browser" />;
+  }
+
+  return (
+    <div className={`web-search-card ${tool.status}`}>
+      <div className="web-search-card__header">
+        <div className="web-search-card__title-row">
+          <StatusDot status={tool.status} />
+          <span className="pill-icon">{actionIcon}</span>
+          <span className="web-search-card__title">{title}</span>
+        </div>
+        {currentUrl && (
+          <button
+            className="web-fetch-card__open"
+            onClick={() => vscode.postMessage({ type: 'openUrl', url: currentUrl })}
+            title="Open current URL"
+          >
+            <ExternalLink size={10} />
+          </button>
+        )}
+      </div>
+      <div className="web-search-card__meta">
+        <span>{host}</span>
+        {meta && <span>{meta}</span>}
+      </div>
+      {detail && <div className="web-search-card__result-snippet">{detail}</div>}
+      {(parsed?.screenshotPath || (Array.isArray(parsed?.artifactIds) && parsed?.artifactIds.length > 0)) && (
+        <div className="web-fetch-card__links">
+          {parsed?.screenshotPath && (
+            <button
+              className="web-fetch-card__link"
+              onClick={() => vscode.postMessage({ type: 'openFile', path: parsed.screenshotPath })}
+              title={parsed.screenshotPath}
+            >
+              Open screenshot
+            </button>
+          )}
+        </div>
+      )}
+      {parsed?.errorMessage && (
+        <div className="web-fetch-card__alert web-fetch-card__alert--error">
+          {parsed.errorMessage}
+        </div>
+      )}
+    </div>
+  );
+});
+BrowserActionCard.displayName = 'BrowserActionCard';
 
 const GrepCodeCard = memo(({ tool }: { tool: ToolCall }) => {
   const pattern = (tool.args?.pattern as string) || tool.summary;
@@ -1089,6 +1189,7 @@ export const ToolCard = memo(({ tool, decision, onDecide }: ToolCardProps) => {
   if (['get_diagnostics', 'diagnose'].includes(n)) return <DiagnosticsCard tool={tool} />;
   if (n === 'web_fetch') return <WebFetchCard tool={tool} />;
   if (n === 'web_search') return <WebSearchCard tool={tool} />;
+  if (n.startsWith('browser_')) return <BrowserActionCard tool={tool} />;
   if (n === 'grep_code') return <GrepCodeCard tool={tool} />;
   if (n === 'create_directory') return <CreateDirCard tool={tool} />;
   if (n === 'get_file_info') return <GetFileInfoCard tool={tool} />;

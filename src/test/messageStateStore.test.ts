@@ -21,6 +21,7 @@ function createGlobalState(initial: Record<string, unknown> = {}) {
 function createStorageStub() {
     const sessionIndex: any[] = [];
     const sessionHistories = new Map<string, any>();
+    let browserArtifactsIndex: any[] = [];
     return {
         readSessionIndex(fallback: any[]) {
             return sessionIndex.length > 0 ? sessionIndex : fallback;
@@ -36,6 +37,12 @@ function createStorageStub() {
         },
         async deleteSessionHistory(sessionId: string) {
             sessionHistories.delete(sessionId);
+        },
+        readBrowserArtifactsIndex(fallback: any[]) {
+            return browserArtifactsIndex.length > 0 ? browserArtifactsIndex : fallback;
+        },
+        async writeBrowserArtifactsIndex(value: any[]) {
+            browserArtifactsIndex = [...value];
         },
         getWrittenHistory(sessionId: string) {
             return sessionHistories.get(sessionId);
@@ -116,6 +123,23 @@ test('MessageStateStore saves schema-versioned runtime snapshots', async () => {
             focus: 'Reading files.',
             recommendedAction: 'Keep going.',
         }),
+        () => ({
+            active: true,
+            sessionId: 'browser-1',
+            currentUrl: 'https://example.com',
+            lastAction: 'navigate',
+            artifactCount: 1,
+            consoleMessageCount: 2,
+        }),
+        () => [{
+            id: 'artifact-1',
+            sessionId: 'browser-1',
+            kind: 'screenshot',
+            label: 'Navigate screenshot',
+            path: '/tmp/browser-1/artifact-1.png',
+            createdAt: '2026-03-13T10:10:00.000Z',
+            action: 'navigate',
+        }],
     );
 
     await store.saveSessionHistory('session-1', [{ role: 'assistant', segments: [] }]);
@@ -125,6 +149,8 @@ test('MessageStateStore saves schema-versioned runtime snapshots', async () => {
     assert.equal(written.messageState.model, 'qwen3');
     assert.equal(written.runtimeSnapshots[0].turnState.turnId, 'turn-1');
     assert.equal(written.runtimeSnapshots[0].toolControlState.turnId, 'turn-1');
+    assert.equal(written.runtimeSnapshots[0].browserSessionState.sessionId, 'browser-1');
+    assert.equal(written.browserArtifactsIndex[0].kind, 'screenshot');
 });
 
 test('MessageStateStore migrates legacy session payloads and restores meta fallback', async () => {
@@ -167,6 +193,8 @@ test('MessageStateStore migrates legacy session payloads and restores meta fallb
         workspaceManager as any,
         traceService as any,
         () => null,
+        () => null,
+        () => [],
     );
 
     const loaded = await store.loadSession('legacy-session');

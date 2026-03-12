@@ -13,6 +13,8 @@ import { WorkspaceStorage } from '../services/WorkspaceStorage';
 import { ProviderPreflight } from '../services/ProviderPreflight';
 import { TurnTraceService } from '../services/TurnTraceService';
 import { ToolControlService } from '../services/ToolControlService';
+import { BrowserSessionService } from '../services/BrowserSessionService';
+import { setBrowserSessionService } from '../services/BrowserSessionProvider';
 import { MessageStateStore } from './runtime/MessageStateStore';
 import { RuntimeEventBus } from './runtime/RuntimeEventBus';
 import { TaskRuntime } from './runtime/TaskRuntime';
@@ -39,6 +41,7 @@ export class TaskController {
     private readonly toolPolicyService: ToolPolicyService;
     private readonly toolExecutor: ToolExecutor;
     private readonly taskRuntime: TaskRuntime;
+    private readonly browserSessionService: BrowserSessionService;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -50,6 +53,8 @@ export class TaskController {
         this.traceService = new TurnTraceService(this.storage);
         this.workspaceManager = new WorkspaceManager(_extensionContext, this.storage, defaultModel, ollamaUrl);
         this.checkpointManager = new CheckpointManager(_extensionContext);
+        this.browserSessionService = new BrowserSessionService(this.storage);
+        setBrowserSessionService(this.browserSessionService);
         const ps = this.workspaceManager.getProviderState();
         this.llmService = new LLMService({
             providerId: ps.providerId,
@@ -68,7 +73,9 @@ export class TaskController {
             this._extensionContext,
             this.workspaceManager,
             this.traceService,
-            () => this.lastToolControlState
+            () => this.lastToolControlState,
+            () => this.browserSessionService.getState(),
+            () => this.browserSessionService.getArtifactsIndex(),
         );
         this.toolPolicyService = new ToolPolicyService(
             () => this.autoApproveConfig,
@@ -116,6 +123,7 @@ export class TaskController {
     public clearHistory() {
         this.workspaceManager.clearHistory();
         this.lastToolControlState = null;
+        void this.browserSessionService.close();
     }
     public changeModel(model: string) { this.workspaceManager.changeModel(model); this.rebuildLLMService(); }
     public changeMode(mode: string) { this.workspaceManager.setMode(mode as any); }
@@ -211,7 +219,11 @@ export class TaskController {
         const readTools  = ['read_file', 'read_multiple_files', 'list_directory', 'list_directory_tree', 'search_in_files', 'get_file_info'];
         const writeTools = ['write_file', 'delete_file', 'create_directory', 'move_file', 'write_multiple_files', 'delete_multiple_files'];
         const cmdTools   = ['run_command', 'kill_bg_process'];
-        const webTools   = ['web_search', 'web_fetch'];
+        const webTools   = [
+            'web_search', 'web_fetch',
+            'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll',
+            'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
+        ];
         if (c.read_file  && readTools.includes(toolName))  return true;
         if (c.write_file && writeTools.includes(toolName)) return true;
         if (c.run_command && cmdTools.includes(toolName))  return true;
@@ -246,12 +258,14 @@ export class TaskController {
         if (!this._view) return;
         const loaded = await this.messageStateStore.loadSession(sessionId);
         const meta = loaded.meta;
+        const latestRuntimeSnapshot = loaded.payload.runtimeSnapshots[loaded.payload.runtimeSnapshots.length - 1];
         this._view.postMessage({
             type: 'sessionLoaded',
             sessionId,
             messages: loaded.messages,
             mode: loaded.payload.messageState.mode || meta?.mode || 'code',
             title: meta?.title ?? 'Chat',
+            browserSessionState: latestRuntimeSnapshot?.browserSessionState ?? null,
         });
         this._view.postMessage({
             type: 'tokenCount',
@@ -327,6 +341,7 @@ export class TaskController {
             latestTrace,
             turnState: currentTurnState,
             toolControlState: this.lastToolControlState,
+            browserSessionState: this.browserSessionService.getState(),
             toolCatalog: this.getToolCatalog(),
             providerCapabilities: listProviderCapabilities(),
             // Provider state — frontend settings panelini restore eder

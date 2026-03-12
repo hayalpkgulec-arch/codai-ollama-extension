@@ -252,11 +252,36 @@ export interface GoalControlState {
     recoveryHint?: string;
 }
 
+export type BrowserActionName =
+    | 'navigate'
+    | 'click'
+    | 'type'
+    | 'scroll'
+    | 'wait_for_text'
+    | 'screenshot'
+    | 'console_logs'
+    | 'close';
+
+export interface BrowserArtifactEntry {
+    id: string;
+    sessionId: string;
+    kind: 'screenshot' | 'console';
+    label: string;
+    path: string;
+    createdAt: string;
+    action: BrowserActionName;
+}
+
 export interface BrowserSessionState {
     active: boolean;
+    sessionId?: string;
     currentUrl?: string;
     lastAction?: string;
     artifactCount: number;
+    lastActionAt?: number;
+    lastArtifactPath?: string;
+    lastError?: string;
+    consoleMessageCount?: number;
 }
 
 export interface MessageStateSnapshot {
@@ -287,7 +312,7 @@ export interface StoredSessionHistory {
     messages: any[];
     messageState: MessageStateSnapshot;
     runtimeSnapshots: RuntimeSnapshot[];
-    browserArtifactsIndex: Array<{ id: string; path: string; createdAt: string }>;
+    browserArtifactsIndex: BrowserArtifactEntry[];
     goalSnapshots: GoalControlState[];
     savedAt: string;
 }

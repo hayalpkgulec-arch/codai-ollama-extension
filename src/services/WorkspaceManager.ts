@@ -342,6 +342,7 @@ export class WorkspaceManager {
         if (this.agentMode === 'plan') return [
             'read_file', 'read_multiple_files', 'list_files', 'list_directory_tree',
             'search_files', 'grep_code', 'get_diagnostics', 'get_file_info', 'web_fetch', 'web_search',
+            'browser_navigate', 'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
             'task_notes', 'ask_followup_questions', 'ask_followup_question',
             'save_plan', 'attempt_completion',
         ];
@@ -353,6 +354,8 @@ export class WorkspaceManager {
             'run_command', 'delete_file', 'rename_file', 'get_diagnostics',
             'web_fetch', 'web_search', 'create_directory', 'get_file_info',
             'find_and_replace', 'append_to_file',
+            'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll',
+            'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
             'ask_followup_question', 'attempt_completion',
         ];
     }

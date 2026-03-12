@@ -50,6 +50,7 @@ export default function App() {
     latestTrace,
     turnState,
     toolControlState,
+    browserSessionState,
     toolControlNotice,
     preflightNotice,
     resumeNotice,
@@ -845,6 +846,7 @@ export default function App() {
         latestTrace={latestTrace}
         turnState={turnState}
         toolControlState={toolControlState}
+        browserSessionState={browserSessionState}
         preflightNotice={preflightNotice}
         resumeNotice={resumeNotice}
         onClose={() => setShowTraceDrawer(false)}

@@ -256,6 +256,10 @@ export class ToolExecutor {
             });
         }
 
+        if (normalized.browserSessionState) {
+            this.options.eventBus.emit(turnId, 'browserSessionState', normalized.browserSessionState);
+        }
+
         return {
             phaseId,
             toolName,
