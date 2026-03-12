@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.39] - 2026-03-12
+### Fixed
+- Auto-update now re-checks when the VS Code window regains focus, so newly published releases do not get missed as easily in long-running sessions
+- The install-update command now always points at the latest pending release instead of keeping the first captured download URL
+
+---
+
 ## [0.0.38] - 2026-03-12
 ### Fixed
 - Provider settings no longer re-fetch models continuously when the selected model or saved provider state changes
