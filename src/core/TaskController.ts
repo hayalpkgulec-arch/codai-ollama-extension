@@ -82,8 +82,43 @@ export class TaskController {
         this.rebuildLLMService();
     }
 
-    public async fetchProviderModels(): Promise<Array<{ id: string; label: string }>> {
-        return this.llmService.fetchModels();
+    public async fetchProviderModels(options?: {
+        providerId?: string;
+        apiKey?: string;
+        apiKeys?: string[];
+        baseUrl?: string;
+    }): Promise<Array<{ id: string; label: string }>> {
+        if (!options?.providerId) {
+            return this.llmService.fetchModels();
+        }
+
+        const providerId = options.providerId as keyof typeof PROVIDER_DEFS;
+        const def = PROVIDER_DEFS[providerId];
+        if (!def) {
+            throw new Error(`Unknown provider: ${options.providerId}`);
+        }
+
+        const current = this.workspaceManager.getProviderState();
+        const isCurrentProvider = current.providerId === providerId;
+        const resolvedKeys = Array.isArray(options.apiKeys) && options.apiKeys.length > 0
+            ? options.apiKeys.filter(k => typeof k === 'string' && k.trim())
+            : (typeof options.apiKey === 'string' && options.apiKey.trim()
+                ? [options.apiKey.trim()]
+                : (isCurrentProvider ? current.apiKeys.filter(k => k.trim()) : []));
+        const resolvedApiKey = resolvedKeys[0]
+            || (typeof options.apiKey === 'string' ? options.apiKey.trim() : '')
+            || (isCurrentProvider ? current.apiKey : '');
+        const resolvedBaseUrl = (options.baseUrl || (isCurrentProvider ? current.baseUrl : def.baseUrl)).replace(/\/+$/, '');
+
+        const previewService = new LLMService({
+            providerId,
+            baseUrl: resolvedBaseUrl,
+            apiKey: resolvedApiKey,
+            apiKeys: resolvedKeys,
+            model: this.workspaceManager.getDefaultModel(),
+        });
+
+        return previewService.fetchModels();
     }
 
     public getLLMKeyCount(): number { return this.llmService.getKeyCount(); }

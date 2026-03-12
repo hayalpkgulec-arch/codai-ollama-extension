@@ -206,10 +206,27 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
             // Provider modellerini çek
             case 'fetchProviderModels': {
                 try {
-                    const models = await controller.fetchProviderModels();
-                    webview.postMessage({ type: 'providerModels', models, error: null });
+                    const models = await controller.fetchProviderModels({
+                        providerId: data.providerId,
+                        apiKey: data.apiKey,
+                        apiKeys: Array.isArray(data.apiKeys) ? data.apiKeys : undefined,
+                        baseUrl: data.baseUrl,
+                    });
+                    webview.postMessage({
+                        type: 'providerModels',
+                        requestId: data.requestId,
+                        providerId: data.providerId,
+                        models,
+                        error: null
+                    });
                 } catch (e: any) {
-                    webview.postMessage({ type: 'providerModels', models: [], error: e.message });
+                    webview.postMessage({
+                        type: 'providerModels',
+                        requestId: data.requestId,
+                        providerId: data.providerId,
+                        models: [],
+                        error: e.message
+                    });
                 }
                 break;
             }

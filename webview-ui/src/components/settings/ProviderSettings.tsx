@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
     Check,
     Cloud,
@@ -222,6 +222,8 @@ export const ProviderSettings = memo(({
     const [selectedModel, setSelectedModel] = useState(currentModel);
     const [extraKeys, setExtraKeys] = useState<string[]>([]);
     const [keyCount, setKeyCount] = useState<number | null>(null);
+    const modelsRequestSeq = useRef(0);
+    const activeModelsRequestId = useRef<string | null>(null);
 
     const def = PROVIDERS.find((provider) => provider.id === selectedId)!;
     const currentProviderHasKey = selectedId === currentProviderId && hasApiKey;
@@ -229,6 +231,27 @@ export const ProviderSettings = memo(({
     const credentialLabel = def.credentialLabel || 'API Key';
     const credentialPlaceholder = def.credentialPlaceholder || 'sk-...';
     const credentialActionLabel = def.credentialActionLabel || 'Get free key';
+
+    const requestModels = useCallback((providerId: ProviderId, keyOverride?: string, extraKeyOverrides?: string[], baseUrlOverride?: string) => {
+        const requestId = `provider-models-${providerId}-${Date.now()}-${modelsRequestSeq.current++}`;
+        activeModelsRequestId.current = requestId;
+        setFetchingModels(true);
+        setModelsError('');
+
+        const allKeys = [
+            typeof keyOverride === 'string' ? keyOverride.trim() : apiKey.trim(),
+            ...((extraKeyOverrides ?? extraKeys).map((key) => key.trim()))
+        ].filter(Boolean);
+
+        vscode.postMessage({
+            type: 'fetchProviderModels',
+            requestId,
+            providerId,
+            apiKey: allKeys[0] || undefined,
+            apiKeys: allKeys.length > 1 ? allKeys : undefined,
+            baseUrl: baseUrlOverride || baseUrl || PROVIDERS.find((provider) => provider.id === providerId)?.defaultBaseUrl,
+        });
+    }, [apiKey, baseUrl, extraKeys]);
 
     useEffect(() => {
         const nextProvider = PROVIDERS.find((provider) => provider.id === selectedId);
@@ -244,22 +267,28 @@ export const ProviderSettings = memo(({
 
         setModels([]);
         setModelsError('');
+        setFetchingModels(false);
         setExtraKeys([]);
         setKeyCount(null);
+        activeModelsRequestId.current = null;
 
         const canAutoFetch = !nextProvider?.requiresApiKey || (selectedId === currentProviderId && hasApiKey);
         if (canAutoFetch) {
-            setFetchingModels(true);
             setTimeout(() => {
-                vscode.postMessage({ type: 'fetchProviderModels' });
+                requestModels(selectedId, '', [], nextProvider?.defaultBaseUrl);
             }, 150);
         }
-    }, [currentProviderId, hasApiKey, selectedId, selectedModel, setBaseUrl]);
+    }, [currentProviderId, hasApiKey, requestModels, selectedId, selectedModel, setBaseUrl]);
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {
             if (event.data.type === 'providerModels') {
+                if (event.data.requestId && activeModelsRequestId.current && event.data.requestId !== activeModelsRequestId.current) {
+                    return;
+                }
+
                 setFetchingModels(false);
+                activeModelsRequestId.current = null;
 
                 if (event.data.error) {
                     setModelsError(event.data.error);
@@ -291,17 +320,20 @@ export const ProviderSettings = memo(({
                     setKeyCount(event.data.keyCount);
                 }
                 setTimeout(() => setSaved(false), 2000);
-                setFetchingModels(true);
-                setModelsError('');
                 setTimeout(() => {
-                    vscode.postMessage({ type: 'fetchProviderModels' });
+                    requestModels(
+                        event.data.providerId || selectedId,
+                        '',
+                        [],
+                        event.data.baseUrl || baseUrl || def.defaultBaseUrl
+                    );
                 }, 200);
             }
         };
 
         window.addEventListener('message', handler);
         return () => window.removeEventListener('message', handler);
-    }, [def.defaultModels, def.isLocal, onModelSelect, onProviderModels, selectedId, selectedModel]);
+    }, [baseUrl, def.defaultBaseUrl, def.defaultModels, def.isLocal, onModelSelect, onProviderModels, requestModels, selectedId, selectedModel]);
 
     const handleSave = useCallback(() => {
         if (def.requiresApiKey && !apiKey.trim() && !currentProviderHasKey) {
@@ -343,22 +375,8 @@ export const ProviderSettings = memo(({
             return;
         }
 
-        setFetchingModels(true);
-        setModelsError('');
-
-        const allKeys = [apiKey.trim(), ...extraKeys.map((key) => key.trim())].filter(Boolean);
-        vscode.postMessage({
-            type: 'changeProvider',
-            providerId: selectedId,
-            apiKey: allKeys[0] || undefined,
-            apiKeys: allKeys.length > 1 ? allKeys : undefined,
-            baseUrl: baseUrl || def.defaultBaseUrl,
-        });
-
-        setTimeout(() => {
-            vscode.postMessage({ type: 'fetchProviderModels' });
-        }, 350);
-    }, [apiKey, baseUrl, credentialLabel, currentProviderHasKey, def, extraKeys, selectedId]);
+        requestModels(selectedId, apiKey, extraKeys, baseUrl || def.defaultBaseUrl);
+    }, [apiKey, baseUrl, credentialLabel, currentProviderHasKey, def, extraKeys, requestModels, selectedId]);
 
     const handleModelPick = (id: string) => {
         setSelectedModel(id);

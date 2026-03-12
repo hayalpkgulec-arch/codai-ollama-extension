@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.37] - 2026-03-12
+### Fixed
+- Provider model fetching now uses the currently selected provider config instead of stale saved state
+- Provider settings now ignore stale model-fetch responses so the loading state does not get stuck
+- Refreshing models no longer depends on changing provider state first
+
+---
+
 ## [0.0.36] - 2026-03-12
 ### Added
 - Slash command menu now loads custom prompts from `.codai/commands`
