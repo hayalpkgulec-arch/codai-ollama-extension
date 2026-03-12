@@ -3,13 +3,19 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { Message, AgentMode } from '../core/types';
 import { getModeSystemPrompt } from '../core/SystemPrompts';
-import { ProviderId, DEFAULT_PROVIDER } from './providers';
+import { ProviderId, DEFAULT_PROVIDER, PROVIDER_DEFS } from './providers';
 
 export interface ProviderState {
     providerId: ProviderId;
     apiKey: string;
     apiKeys: string[];  // multi-key rotation için
     baseUrl: string;    // override (custom provider veya farklı ollama url)
+}
+
+export interface ProviderConfig {
+    apiKey: string;
+    apiKeys: string[];
+    baseUrl: string;
 }
 
 export class WorkspaceManager {
@@ -31,6 +37,7 @@ export class WorkspaceManager {
         apiKeys: [],
         baseUrl: 'http://localhost:11434',
     };
+    private providerConfigs: Record<ProviderId, ProviderConfig>;
 
     constructor(
         private readonly _extensionContext: vscode.ExtensionContext,
@@ -39,7 +46,9 @@ export class WorkspaceManager {
     ) {
         this.defaultModel = defaultModel;
         this.providerState.baseUrl = ollamaUrl;
+        this.providerConfigs = this.createDefaultProviderConfigs(ollamaUrl);
         this.loadPersistedState();
+        this.syncCurrentProviderState();
         this.syncSystemMessage();
     }
 
@@ -76,12 +85,25 @@ export class WorkspaceManager {
         }
 
         // Global provider state (tüm workspace'lerde ortak — globalState)
-        const global = this._extensionContext.globalState.get<ProviderState>('codai.providerState');
+        const global = this._extensionContext.globalState.get<any>('codai.providerState');
         if (global) {
             if (global.providerId) this.providerState.providerId = global.providerId;
-            if (typeof global.apiKey === 'string') this.providerState.apiKey = global.apiKey;
-            if (Array.isArray(global.apiKeys)) this.providerState.apiKeys = global.apiKeys;
-            if (typeof global.baseUrl === 'string') this.providerState.baseUrl = global.baseUrl;
+            if (global.providers && typeof global.providers === 'object') {
+                for (const providerId of Object.keys(PROVIDER_DEFS) as ProviderId[]) {
+                    this.providerConfigs[providerId] = this.normalizeProviderConfig(
+                        providerId,
+                        global.providers[providerId],
+                        this.providerConfigs[providerId]
+                    );
+                }
+            } else {
+                const providerId = this.providerState.providerId;
+                this.providerConfigs[providerId] = this.normalizeProviderConfig(
+                    providerId,
+                    global,
+                    this.providerConfigs[providerId]
+                );
+            }
         }
     }
 
@@ -98,7 +120,14 @@ export class WorkspaceManager {
     }
 
     public async persistProviderState() {
-        await this._extensionContext.globalState.update('codai.providerState', this.providerState);
+        const current = this.providerConfigs[this.providerState.providerId];
+        await this._extensionContext.globalState.update('codai.providerState', {
+            providerId: this.providerState.providerId,
+            apiKey: current.apiKey,
+            apiKeys: current.apiKeys,
+            baseUrl: current.baseUrl,
+            providers: this.providerConfigs,
+        });
     }
 
     // ── Plan state accessors ──────────────────────────────────────────────────
@@ -208,13 +237,33 @@ export class WorkspaceManager {
     }
 
     // ── Provider accessors ────────────────────────────────────────────────────
-    public getProviderState(): ProviderState { return { ...this.providerState }; }
+    public getProviderState(): ProviderState {
+        this.syncCurrentProviderState();
+        return { ...this.providerState };
+    }
+
+    public getProviderConfig(providerId: ProviderId): ProviderConfig {
+        return { ...this.providerConfigs[providerId] };
+    }
+
+    public getProviderConfigs(): Record<ProviderId, ProviderConfig> {
+        return Object.fromEntries(
+            (Object.keys(this.providerConfigs) as ProviderId[]).map((providerId) => [
+                providerId,
+                { ...this.providerConfigs[providerId] },
+            ])
+        ) as Record<ProviderId, ProviderConfig>;
+    }
 
     public async updateProviderState(partial: Partial<ProviderState>) {
+        const targetProviderId = partial.providerId || this.providerState.providerId;
+        this.providerConfigs[targetProviderId] = this.normalizeProviderConfig(
+            targetProviderId,
+            partial,
+            this.providerConfigs[targetProviderId]
+        );
         if (partial.providerId) this.providerState.providerId = partial.providerId;
-        if (typeof partial.apiKey === 'string') this.providerState.apiKey = partial.apiKey;
-        if (Array.isArray(partial.apiKeys)) this.providerState.apiKeys = partial.apiKeys;
-        if (typeof partial.baseUrl === 'string') this.providerState.baseUrl = partial.baseUrl;
+        this.syncCurrentProviderState();
         await this.persistProviderState();
     }
 
@@ -306,5 +355,57 @@ export class WorkspaceManager {
         this.conversationHistory = systemMsg
             ? [systemMsg, ...nonSystem]
             : nonSystem;
+    }
+
+    private createDefaultProviderConfigs(ollamaUrl: string): Record<ProviderId, ProviderConfig> {
+        return Object.fromEntries(
+            (Object.keys(PROVIDER_DEFS) as ProviderId[]).map((providerId) => [
+                providerId,
+                {
+                    apiKey: '',
+                    apiKeys: [],
+                    baseUrl: providerId === 'ollama' ? ollamaUrl : PROVIDER_DEFS[providerId].baseUrl,
+                },
+            ])
+        ) as Record<ProviderId, ProviderConfig>;
+    }
+
+    private normalizeProviderConfig(
+        providerId: ProviderId,
+        partial: Partial<ProviderState> | Partial<ProviderConfig> | undefined,
+        fallback?: ProviderConfig
+    ): ProviderConfig {
+        const base = fallback ?? this.providerConfigs[providerId] ?? {
+            apiKey: '',
+            apiKeys: [],
+            baseUrl: PROVIDER_DEFS[providerId].baseUrl,
+        };
+        const trimmedKeys = Array.isArray(partial?.apiKeys)
+            ? partial.apiKeys
+                .filter((key): key is string => typeof key === 'string')
+                .map((key) => key.trim())
+                .filter(Boolean)
+            : [];
+        const primaryKey = trimmedKeys[0]
+            || (typeof partial?.apiKey === 'string' ? partial.apiKey.trim() : base.apiKey);
+        const apiKeys = trimmedKeys.length > 0
+            ? trimmedKeys
+            : (primaryKey ? [primaryKey] : []);
+        const nextBaseUrl = typeof partial?.baseUrl === 'string' && partial.baseUrl.trim()
+            ? partial.baseUrl.trim().replace(/\/+$/, '')
+            : base.baseUrl;
+
+        return {
+            apiKey: primaryKey || '',
+            apiKeys,
+            baseUrl: nextBaseUrl || PROVIDER_DEFS[providerId].baseUrl,
+        };
+    }
+
+    private syncCurrentProviderState() {
+        const current = this.providerConfigs[this.providerState.providerId];
+        this.providerState.apiKey = current.apiKey;
+        this.providerState.apiKeys = [...current.apiKeys];
+        this.providerState.baseUrl = current.baseUrl;
     }
 }

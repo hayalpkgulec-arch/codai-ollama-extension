@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.42] - 2026-03-12
+### Fixed
+- Provider settings now persist separate API keys, extra rotation keys, and base URLs for each provider instead of only remembering the active one
+- Saved provider credentials now restore into the settings UI after restarting VSCodium
+
+### Changed
+- Chat composer background fill was removed for a simpler footer look
+
+---
+
 ## [0.0.41] - 2026-03-12
 ### Fixed
 - Chat composer shadow was toned down so the footer no longer looks detached from the panel

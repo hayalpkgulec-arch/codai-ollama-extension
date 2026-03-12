@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { ChatMessage, Segment, ToolCall, AgentMode, WizardQuestion, PlanSavedPayload } from '../types';
+import type { ChatMessage, Segment, ToolCall, AgentMode, WizardQuestion, PlanSavedPayload, ProviderSavedConfig } from '../types';
 import { vscode } from '../vscode';
 
 // ── Immutable last-element update ────────────────────────────────────────────
@@ -152,7 +152,8 @@ export function useVSCodeMessage() {
     providerId: string;
     hasApiKey: boolean;
     baseUrl: string;
-  }>({ providerId: 'ollama', hasApiKey: false, baseUrl: 'http://localhost:11434' });
+    configs: Record<string, ProviderSavedConfig>;
+  }>({ providerId: 'ollama', hasApiKey: false, baseUrl: 'http://localhost:11434', configs: {} });
 
   const bumpScroll = useCallback(() => setScrollTick(t => t + 1), []);
   const clearMessages = useCallback(() => {
@@ -180,6 +181,9 @@ export function useVSCodeMessage() {
               providerId: msg.provider.providerId || 'ollama',
               hasApiKey: !!msg.provider.hasApiKey,
               baseUrl: msg.provider.baseUrl || 'http://localhost:11434',
+              configs: typeof msg.provider.configs === 'object' && msg.provider.configs
+                ? msg.provider.configs
+                : {},
             });
           }
           if (typeof msg.planTodos === 'string' && msg.planTodos.trim()) {
@@ -559,6 +563,12 @@ export function useVSCodeMessage() {
               providerId: msg.providerId,
               hasApiKey: typeof msg.hasApiKey === 'boolean' ? msg.hasApiKey : prev.hasApiKey,
               baseUrl: typeof msg.baseUrl === 'string' && msg.baseUrl ? msg.baseUrl : prev.baseUrl,
+              configs: msg.config
+                ? {
+                  ...prev.configs,
+                  [msg.providerId]: msg.config,
+                }
+                : prev.configs,
             }));
           }
           break;

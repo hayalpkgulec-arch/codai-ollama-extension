@@ -65,6 +65,8 @@ export class TaskController {
     public async ensureProjectIndexed(force = false) { await this.workspaceManager.ensureProjectIndexed(force); }
     public async persistState() { await this.workspaceManager.persistState(); }
     public getProviderState() { return this.workspaceManager.getProviderState(); }
+    public getProviderConfig(providerId: string) { return this.workspaceManager.getProviderConfig(providerId as any); }
+    public getProviderConfigs() { return this.workspaceManager.getProviderConfigs(); }
 
     public async changeProvider(providerId: string, apiKey: string, baseUrl: string, apiKeys?: string[]) {
         const def = PROVIDER_DEFS[providerId as keyof typeof PROVIDER_DEFS];
@@ -99,16 +101,25 @@ export class TaskController {
         }
 
         const current = this.workspaceManager.getProviderState();
+        const saved = this.workspaceManager.getProviderConfig(providerId);
         const isCurrentProvider = current.providerId === providerId;
+        const sourceConfig = isCurrentProvider
+            ? current
+            : {
+                providerId,
+                apiKey: saved.apiKey,
+                apiKeys: saved.apiKeys,
+                baseUrl: saved.baseUrl,
+            };
         const resolvedKeys = Array.isArray(options.apiKeys) && options.apiKeys.length > 0
             ? options.apiKeys.filter(k => typeof k === 'string' && k.trim())
             : (typeof options.apiKey === 'string' && options.apiKey.trim()
                 ? [options.apiKey.trim()]
-                : (isCurrentProvider ? current.apiKeys.filter(k => k.trim()) : []));
+                : sourceConfig.apiKeys.filter(k => k.trim()));
         const resolvedApiKey = resolvedKeys[0]
             || (typeof options.apiKey === 'string' ? options.apiKey.trim() : '')
-            || (isCurrentProvider ? current.apiKey : '');
-        const resolvedBaseUrl = (options.baseUrl || (isCurrentProvider ? current.baseUrl : def.baseUrl)).replace(/\/+$/, '');
+            || sourceConfig.apiKey;
+        const resolvedBaseUrl = (options.baseUrl || sourceConfig.baseUrl || def.baseUrl).replace(/\/+$/, '');
 
         const previewService = new LLMService({
             providerId,
@@ -254,6 +265,7 @@ export class TaskController {
             (m) => m.role === 'user' || m.role === 'assistant' || (m.role as string) === 'tool'
         );
         const ps = this.workspaceManager.getProviderState();
+        const providerConfigs = this.workspaceManager.getProviderConfigs();
         this._view.postMessage({
             type: 'initialState',
             history: historyForUi,
@@ -262,9 +274,17 @@ export class TaskController {
             // Provider state — frontend settings panelini restore eder
             provider: {
                 providerId: ps.providerId,
-                apiKey: ps.apiKey ? '***' : '',   // güvenlik: gerçek key gönderme
                 hasApiKey: !!ps.apiKey,
                 baseUrl: ps.baseUrl,
+                configs: Object.fromEntries(
+                    Object.entries(providerConfigs).map(([providerId, config]) => [
+                        providerId,
+                        {
+                            ...config,
+                            hasApiKey: !!config.apiKey || config.apiKeys.some((key) => key.trim().length > 0),
+                        },
+                    ])
+                ),
             },
             settings: {
                 ...this.workspaceManager.getSettings(),

@@ -1,5 +1,12 @@
 export type AgentMode = 'code' | 'plan' | 'chat';
 
+export interface ProviderSavedConfig {
+  apiKey: string;
+  apiKeys: string[];
+  baseUrl: string;
+  hasApiKey?: boolean;
+}
+
 // ── Auto-approve config ───────────────────────────────────────────────────────
 export interface AutoApproveConfig {
   read_file: boolean;

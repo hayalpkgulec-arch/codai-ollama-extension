@@ -5230,7 +5230,7 @@ button:focus-visible {
 .input-bar {
   padding: 8px 10px 12px;
   border-top: none;
-  background: var(--vscode-sideBar-background, #111318);
+  background: transparent;
 }
 
 .input-shell {
@@ -5239,16 +5239,14 @@ button:focus-visible {
   gap: 8px;
   padding: 10px 12px 8px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.015) 100%),
-    var(--vscode-sideBar-background, #17181c);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: transparent;
   box-shadow: none;
   overflow: visible;
 }
 
 .input-shell:focus-within {
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 0 0 1px rgba(122, 162, 247, 0.14);
 }
 

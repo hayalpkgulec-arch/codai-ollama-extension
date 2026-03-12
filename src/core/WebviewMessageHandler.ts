@@ -190,14 +190,18 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                         data.baseUrl || '',
                         Array.isArray(data.apiKeys) ? data.apiKeys : undefined
                     );
-                    const keyCount = controller.getLLMKeyCount();
                     const providerState = controller.getProviderState();
+                    const providerConfig = controller.getProviderConfig(providerState.providerId);
                     webview.postMessage({
                         type: 'providerChanged',
                         providerId: providerState.providerId,
                         hasApiKey: !!providerState.apiKey,
                         baseUrl: providerState.baseUrl,
-                        keyCount
+                        keyCount: controller.getLLMKeyCount(),
+                        config: {
+                            ...providerConfig,
+                            hasApiKey: !!providerConfig.apiKey || providerConfig.apiKeys.some((key) => key.trim().length > 0),
+                        },
                     });
                 }
                 break;

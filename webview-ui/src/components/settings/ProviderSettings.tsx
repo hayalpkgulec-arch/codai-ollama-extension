@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { vscode } from '../../vscode';
 import { AutoApproveSettings } from './AutoApproveSettings';
-import type { AutoApproveConfig } from '../../types';
+import type { AutoApproveConfig, ProviderSavedConfig } from '../../types';
 
 export type ProviderId =
     | 'ollama'
@@ -41,6 +41,12 @@ export interface ProviderDef {
     credentialPlaceholder?: string;
     credentialHint?: string;
     credentialActionLabel?: string;
+}
+
+interface ProviderDraft {
+    apiKey: string;
+    extraKeys: string[];
+    baseUrl: string;
 }
 
 export const PROVIDERS: ProviderDef[] = [
@@ -186,12 +192,37 @@ interface ProviderSettingsProps {
     ) => void;
     onModelSelect: (modelId: string) => void;
     currentModel: string;
-    apiKeyValue: string;
-    baseUrlValue: string;
-    onApiKeyChange: (value: string) => void;
-    onBaseUrlChange: (value: string) => void;
+    savedProviderConfigs: Partial<Record<ProviderId, ProviderSavedConfig>>;
     onAutoApproveChange?: (cfg: AutoApproveConfig) => void;
 }
+
+const buildProviderDraft = (
+    providerId: ProviderId,
+    savedConfig?: ProviderSavedConfig
+): ProviderDraft => {
+    const providerDef = PROVIDERS.find((provider) => provider.id === providerId);
+    const normalizedKeys = Array.isArray(savedConfig?.apiKeys)
+        ? savedConfig.apiKeys.map((key) => key.trim()).filter(Boolean)
+        : [];
+    const primaryKey = normalizedKeys[0]
+        || (typeof savedConfig?.apiKey === 'string' ? savedConfig.apiKey.trim() : '');
+
+    return {
+        apiKey: primaryKey,
+        extraKeys: normalizedKeys.length > 0 ? normalizedKeys.slice(1) : [],
+        baseUrl: (savedConfig?.baseUrl || providerDef?.defaultBaseUrl || '').trim(),
+    };
+};
+
+const buildProviderDrafts = (
+    savedProviderConfigs: Partial<Record<ProviderId, ProviderSavedConfig>>
+): Record<ProviderId, ProviderDraft> =>
+    Object.fromEntries(
+        PROVIDERS.map((provider) => [
+            provider.id,
+            buildProviderDraft(provider.id, savedProviderConfigs[provider.id]),
+        ])
+    ) as Record<ProviderId, ProviderDraft>;
 
 export const ProviderSettings = memo(({
     currentProviderId,
@@ -201,17 +232,13 @@ export const ProviderSettings = memo(({
     onProviderModels,
     onModelSelect,
     currentModel,
-    apiKeyValue,
-    baseUrlValue,
-    onApiKeyChange,
-    onBaseUrlChange,
+    savedProviderConfigs,
     onAutoApproveChange,
 }: ProviderSettingsProps) => {
     const [selectedId, setSelectedId] = useState<ProviderId>(currentProviderId);
-    const apiKey = apiKeyValue;
-    const setApiKey = onApiKeyChange;
-    const baseUrl = baseUrlValue || currentBaseUrl;
-    const setBaseUrl = onBaseUrlChange;
+    const [providerDrafts, setProviderDrafts] = useState<Record<ProviderId, ProviderDraft>>(
+        () => buildProviderDrafts(savedProviderConfigs)
+    );
 
     const [showKey, setShowKey] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -220,17 +247,42 @@ export const ProviderSettings = memo(({
     const [models, setModels] = useState<Array<{ id: string; label: string }>>([]);
     const [modelsError, setModelsError] = useState('');
     const [selectedModel, setSelectedModel] = useState(currentModel);
-    const [extraKeys, setExtraKeys] = useState<string[]>([]);
-    const [keyCount, setKeyCount] = useState<number | null>(null);
     const modelsRequestSeq = useRef(0);
     const activeModelsRequestId = useRef<string | null>(null);
 
     const def = PROVIDERS.find((provider) => provider.id === selectedId)!;
-    const currentProviderHasKey = selectedId === currentProviderId && hasApiKey;
-    const hasEffectiveKey = !def.requiresApiKey || apiKey.trim().length > 0 || currentProviderHasKey;
+    const currentDraft = providerDrafts[selectedId] ?? buildProviderDraft(selectedId, savedProviderConfigs[selectedId]);
+    const apiKey = currentDraft.apiKey;
+    const extraKeys = currentDraft.extraKeys;
+    const baseUrl = currentDraft.baseUrl || currentBaseUrl || def.defaultBaseUrl;
+    const persistedConfig = savedProviderConfigs[selectedId];
+    const persistedHasKey = !!persistedConfig?.hasApiKey
+        || !!persistedConfig?.apiKey
+        || !!persistedConfig?.apiKeys?.some((key) => key.trim().length > 0)
+        || (selectedId === currentProviderId && hasApiKey);
+    const hasEffectiveKey = !def.requiresApiKey
+        || apiKey.trim().length > 0
+        || extraKeys.some((key) => key.trim().length > 0)
+        || persistedHasKey;
+    const configuredKeyCount = (apiKey.trim().length > 0 ? 1 : 0) + extraKeys.filter((key) => key.trim().length > 0).length;
     const credentialLabel = def.credentialLabel || 'API Key';
     const credentialPlaceholder = def.credentialPlaceholder || 'sk-...';
     const credentialActionLabel = def.credentialActionLabel || 'Get free key';
+
+    const updateDraft = useCallback((providerId: ProviderId, updater: (draft: ProviderDraft) => ProviderDraft) => {
+        setProviderDrafts((drafts) => ({
+            ...drafts,
+            [providerId]: updater(drafts[providerId] ?? buildProviderDraft(providerId, savedProviderConfigs[providerId])),
+        }));
+    }, [savedProviderConfigs]);
+
+    useEffect(() => {
+        setProviderDrafts(buildProviderDrafts(savedProviderConfigs));
+    }, [savedProviderConfigs]);
+
+    useEffect(() => {
+        setSelectedId(currentProviderId);
+    }, [currentProviderId]);
 
     useEffect(() => {
         setSelectedModel(currentModel);
@@ -260,23 +312,23 @@ export const ProviderSettings = memo(({
     useEffect(() => {
         const nextProvider = PROVIDERS.find((provider) => provider.id === selectedId);
         if (nextProvider) {
-            setBaseUrl(nextProvider.defaultBaseUrl);
-            if (
-                nextProvider.defaultModels.length > 0 &&
-                !nextProvider.defaultModels.some((model) => model.id === selectedModel)
-            ) {
-                setSelectedModel(nextProvider.defaultModels[0].id);
+            if (nextProvider.defaultModels.length > 0) {
+                setSelectedModel((currentSelectedModel) =>
+                    nextProvider.defaultModels.some((model) => model.id === currentSelectedModel)
+                        ? currentSelectedModel
+                        : nextProvider.defaultModels[0].id
+                );
             }
         }
 
         setModels([]);
         setModelsError('');
         setFetchingModels(false);
-        setExtraKeys([]);
-        setKeyCount(null);
         activeModelsRequestId.current = null;
 
-        const canAutoFetch = !nextProvider?.requiresApiKey || (selectedId === currentProviderId && hasApiKey);
+        const persistedDraft = buildProviderDraft(selectedId, savedProviderConfigs[selectedId]);
+        const persistedKeys = [persistedDraft.apiKey, ...persistedDraft.extraKeys].filter((key) => key.trim().length > 0);
+        const canAutoFetch = !nextProvider?.requiresApiKey || persistedKeys.length > 0;
         let timer: ReturnType<typeof setTimeout> | undefined;
         if (canAutoFetch) {
             const requestId = `provider-models-${selectedId}-${Date.now()}-${modelsRequestSeq.current++}`;
@@ -288,14 +340,16 @@ export const ProviderSettings = memo(({
                     type: 'fetchProviderModels',
                     requestId,
                     providerId: selectedId,
-                    baseUrl: selectedId === currentProviderId ? currentBaseUrl : nextProvider?.defaultBaseUrl,
+                    apiKey: persistedKeys[0] || undefined,
+                    apiKeys: persistedKeys.length > 1 ? persistedKeys : undefined,
+                    baseUrl: persistedDraft.baseUrl || (selectedId === currentProviderId ? currentBaseUrl : nextProvider?.defaultBaseUrl),
                 });
             }, 150);
         }
         return () => {
             if (timer) clearTimeout(timer);
         };
-    }, [currentBaseUrl, currentProviderId, hasApiKey, selectedId, setBaseUrl]);
+    }, [currentBaseUrl, currentProviderId, savedProviderConfigs, selectedId]);
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {
@@ -333,19 +387,16 @@ export const ProviderSettings = memo(({
             if (event.data.type === 'providerChanged') {
                 setSaving(false);
                 setSaved(true);
-                if (typeof event.data.keyCount === 'number') {
-                    setKeyCount(event.data.keyCount);
-                }
                 setTimeout(() => setSaved(false), 2000);
             }
         };
 
         window.addEventListener('message', handler);
         return () => window.removeEventListener('message', handler);
-    }, [baseUrl, def.defaultBaseUrl, def.defaultModels, def.isLocal, onModelSelect, onProviderModels, requestModels, selectedId, selectedModel]);
+    }, [def.defaultModels, def.isLocal, onModelSelect, onProviderModels, selectedId, selectedModel]);
 
     const handleSave = useCallback(() => {
-        if (def.requiresApiKey && !apiKey.trim() && !currentProviderHasKey) {
+        if (def.requiresApiKey && !apiKey.trim() && !extraKeys.some((key) => key.trim().length > 0)) {
             setModelsError(`Please enter a ${credentialLabel.toLowerCase()} before applying.`);
             return;
         }
@@ -370,7 +421,6 @@ export const ProviderSettings = memo(({
         apiKey,
         baseUrl,
         credentialLabel,
-        currentProviderHasKey,
         def,
         extraKeys,
         onModelSelect,
@@ -379,13 +429,13 @@ export const ProviderSettings = memo(({
     ]);
 
     const handleFetchModels = useCallback(() => {
-        if (def.requiresApiKey && !apiKey.trim() && !currentProviderHasKey) {
+        if (def.requiresApiKey && !apiKey.trim() && !extraKeys.some((key) => key.trim().length > 0)) {
             setModelsError(`${credentialLabel} required. Enter it and click Apply first.`);
             return;
         }
 
         requestModels(selectedId, apiKey, extraKeys, baseUrl || def.defaultBaseUrl);
-    }, [apiKey, baseUrl, credentialLabel, currentProviderHasKey, def, extraKeys, requestModels, selectedId]);
+    }, [apiKey, baseUrl, credentialLabel, def, extraKeys, requestModels, selectedId]);
 
     const handleModelPick = (id: string) => {
         setSelectedModel(id);
@@ -449,12 +499,8 @@ export const ProviderSettings = memo(({
                                 type={showKey ? 'text' : 'password'}
                                 className="ps-input"
                                 value={apiKey}
-                                onChange={(event) => setApiKey(event.target.value)}
-                                placeholder={
-                                    hasApiKey && selectedId === currentProviderId
-                                        ? '**************** (saved)'
-                                        : credentialPlaceholder
-                                }
+                                onChange={(event) => updateDraft(selectedId, (draft) => ({ ...draft, apiKey: event.target.value }))}
+                                placeholder={credentialPlaceholder}
                                 spellCheck={false}
                             />
                             <button
@@ -477,13 +523,13 @@ export const ProviderSettings = memo(({
                         <div className="ps-extra-keys-header">
                             <KeyRound size={10} />
                             <span>Extra keys for rotation</span>
-                            {keyCount !== null && (
-                                <span className="ps-key-badge">{keyCount} active</span>
+                            {configuredKeyCount > 0 && (
+                                <span className="ps-key-badge">{configuredKeyCount} active</span>
                             )}
                             <button
                                 className="ps-add-key-btn"
                                 type="button"
-                                onClick={() => setExtraKeys((keys) => [...keys, ''])}
+                                onClick={() => updateDraft(selectedId, (draft) => ({ ...draft, extraKeys: [...draft.extraKeys, ''] }))}
                                 title={`Add another ${credentialLabel.toLowerCase()}`}
                             >
                                 <Plus size={10} /> Add key
@@ -501,11 +547,12 @@ export const ProviderSettings = memo(({
                                     className="ps-input"
                                     value={key}
                                     onChange={(event) =>
-                                        setExtraKeys((keys) =>
-                                            keys.map((existingKey, existingIndex) =>
+                                        updateDraft(selectedId, (draft) => ({
+                                            ...draft,
+                                            extraKeys: draft.extraKeys.map((existingKey, existingIndex) =>
                                                 existingIndex === index ? event.target.value : existingKey
-                                            )
-                                        )
+                                            ),
+                                        }))
                                     }
                                     placeholder={`${credentialLabel} ${index + 2}`}
                                     spellCheck={false}
@@ -514,7 +561,10 @@ export const ProviderSettings = memo(({
                                     className="ps-eye-btn"
                                     type="button"
                                     onClick={() =>
-                                        setExtraKeys((keys) => keys.filter((_, existingIndex) => existingIndex !== index))
+                                        updateDraft(selectedId, (draft) => ({
+                                            ...draft,
+                                            extraKeys: draft.extraKeys.filter((_, existingIndex) => existingIndex !== index),
+                                        }))
                                     }
                                     title="Remove"
                                 >
@@ -532,7 +582,7 @@ export const ProviderSettings = memo(({
                             type="text"
                             className="ps-input"
                             value={baseUrl}
-                            onChange={(event) => setBaseUrl(event.target.value)}
+                            onChange={(event) => updateDraft(selectedId, (draft) => ({ ...draft, baseUrl: event.target.value }))}
                             placeholder={def.defaultBaseUrl}
                             spellCheck={false}
                         />

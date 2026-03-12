@@ -69,9 +69,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   // Provider'dan dinamik çekilen modeller
   const [dynamicModels, setDynamicModels] = useState<ModelDef[]>([]);
-  // KEY STATE PARENT'TA — unmount edilince kaybolmaması için
-  const [settingsApiKey, setSettingsApiKey] = useState('');
-  const [settingsBaseUrl, setSettingsBaseUrl] = useState('');
   // Plan timing — for elapsed display on PlanReadyCard
   const [planStartedAt] = useState<number>(() => Date.now());
   const [planReadyCardDismissed, setPlanReadyCardDismissed] = useState(false);
@@ -461,10 +458,7 @@ export default function App() {
           hasApiKey={providerInfo.hasApiKey}
           currentBaseUrl={providerInfo.baseUrl}
           currentModel={model.id}
-          apiKeyValue={settingsApiKey}
-          baseUrlValue={settingsBaseUrl}
-          onApiKeyChange={setSettingsApiKey}
-          onBaseUrlChange={setSettingsBaseUrl}
+          savedProviderConfigs={providerInfo.configs}
           onAutoApproveChange={setAutoApproveConfig}
           onClose={() => setShowSettings(false)}
           onProviderModels={(_providerId, models, isLocal) => {
