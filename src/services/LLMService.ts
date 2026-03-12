@@ -91,13 +91,17 @@ export class LLMService {
     public getKeyCount(): number { return this.getAllKeys().length; }
     public getActiveKeyIndex(): number { return this.keyIndex; }
 
+    private getBaseUrl(): string {
+        return (this.config.baseUrl || '').replace(/\/+$/, '');
+    }
+
     // ── Fetch available models from provider ───────────────────────────────
     public async fetchModels(): Promise<Array<{ id: string; label: string }>> {
         const def = PROVIDER_DEFS[this.config.providerId];
         if (!def.modelsEndpoint) return def.defaultModels;
 
         try {
-            const url = `${this.config.baseUrl}${def.modelsEndpoint}`;
+            const url = `${this.getBaseUrl()}${def.modelsEndpoint}`;
             const headers: Record<string, string> = { 'Content-Type': 'application/json' };
             const fetchKey = this.getActiveKey();
             if (fetchKey) headers['Authorization'] = `Bearer ${fetchKey}`;
@@ -236,7 +240,7 @@ export class LLMService {
         const ollamaHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
         if (activeKey) ollamaHeaders['Authorization'] = `Bearer ${activeKey}`;
 
-        const response = await fetch(`${this.config.baseUrl}/api/chat`, {
+        const response = await fetch(`${this.getBaseUrl()}/api/chat`, {
             method: 'POST',
             headers: ollamaHeaders,
             body: JSON.stringify({ model, messages, tools: formattedTools, think: true, stream: true }),
@@ -351,7 +355,7 @@ export class LLMService {
         };
         if (formattedTools) body.tools = formattedTools;
 
-        const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+        const response = await fetch(`${this.getBaseUrl()}/chat/completions`, {
             method: 'POST',
             headers,
             body: JSON.stringify(body),

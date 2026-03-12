@@ -1,11 +1,11 @@
 # CodAI — AI Coding Assistant
 
-An agentic AI coding assistant for VS Code and VSCodium. Supports Ollama, Google Gemini, OpenRouter, Groq, Cerebras, Mistral and any OpenAI-compatible provider.
+An agentic AI coding assistant for VS Code and VSCodium. Supports Ollama, Google Gemini, OpenRouter, Groq, Cerebras, Mistral, Puter and any OpenAI-compatible provider.
 
 ## Features
 
 - **Agentic task execution** — reads files, writes code, runs terminal commands, searches the web
-- **Multi-provider support** — Ollama (local), Gemini, Groq, OpenRouter, Cerebras, Mistral, Custom
+- **Multi-provider support** — Ollama (local), Gemini, Groq, OpenRouter, Cerebras, Mistral, Puter, Custom
 - **Multi-key rotation** — add multiple API keys per provider; auto-rotates on rate limit with no waiting
 - **Plan mode** — structured task planning before execution
 - **Auto-updater** — checks GitHub Releases every 30 minutes; notifies and installs updates automatically
@@ -28,7 +28,18 @@ An agentic AI coding assistant for VS Code and VSCodium. Supports Ollama, Google
 | OpenRouter | Access to many models, free tier available |
 | Cerebras | 2100 TPS, free tier |
 | Mistral | Codestral for coding tasks |
+| Puter | Use a Puter auth token to access Claude models through the OpenAI-compatible endpoint |
 | Custom | Any OpenAI-compatible endpoint |
+
+## Puter + Claude
+
+1. Open the CodAI settings panel
+2. Select `Puter`
+3. Paste your Puter auth token
+4. Click `Apply`
+5. Pick a Claude model such as `claude-sonnet-4-6`
+
+Reference guide: [Use Cline with Puter](https://developer.puter.com/tutorials/use-cline-with-puter/)
 
 ## Multi-Key Rotation
 

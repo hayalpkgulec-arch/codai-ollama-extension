@@ -1,6 +1,6 @@
 // ── Provider definitions ───────────────────────────────────────────────────
 
-export type ProviderId = 'ollama' | 'openrouter' | 'groq' | 'gemini' | 'cerebras' | 'mistral' | 'custom';
+export type ProviderId = 'ollama' | 'openrouter' | 'groq' | 'gemini' | 'cerebras' | 'mistral' | 'puter' | 'custom';
 
 export interface ProviderDef {
     id: ProviderId;
@@ -117,6 +117,23 @@ export const PROVIDER_DEFS: Record<ProviderId, ProviderDef> = {
         ],
         docsUrl: 'https://docs.mistral.ai',
         keySignupUrl: 'https://console.mistral.ai',
+    },
+    puter: {
+        id: 'puter',
+        label: 'Puter',
+        baseUrl: 'https://api.puter.com/puterai/openai/v1',
+        requiresApiKey: true,
+        protocol: 'openai',
+        modelsEndpoint: '/models',
+        defaultModels: [
+            { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+            { id: 'claude-opus-4-6',   label: 'Claude Opus 4.6' },
+            { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+            { id: 'claude-opus-4-5',   label: 'Claude Opus 4.5' },
+            { id: 'claude-haiku-4-5',  label: 'Claude Haiku 4.5' },
+        ],
+        docsUrl: 'https://developer.puter.com/tutorials/use-cline-with-puter/',
+        keySignupUrl: 'https://developer.puter.com/tutorials/use-cline-with-puter/',
     },
     custom: {
         id: 'custom',

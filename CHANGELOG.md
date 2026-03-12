@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.34] - 2026-03-12
+### Added
+- Puter provider preset wired to the official OpenAI-compatible endpoint
+- Claude model presets for Puter, including `claude-sonnet-4-6`
+- Provider settings support for Puter auth tokens with a direct guide link
+
+### Changed
+- Provider apply flow now keeps model selection aligned when switching providers
+- Cloud providers restored from state now render with the correct cloud/local model tag
+
+### Fixed
+- Base URLs are normalized before API calls so trailing slashes do not break provider requests
+- Provider state updates in the webview now carry `hasApiKey` and `baseUrl` reliably
+
+---
+
 ## [0.0.7] - 2026-03-07
 ### Test
 - Auto-updater test: v0.0.6 → v0.0.7

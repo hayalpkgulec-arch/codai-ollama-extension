@@ -175,6 +175,12 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 });
                 break;
             }
+            case 'openUrl': {
+                if (typeof data.url === 'string' && data.url) {
+                    await vscode.env.openExternal(vscode.Uri.parse(data.url));
+                }
+                break;
+            }
             // Provider değiştir
             case 'changeProvider': {
                 if (data.providerId) {
@@ -185,7 +191,14 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                         Array.isArray(data.apiKeys) ? data.apiKeys : undefined
                     );
                     const keyCount = controller.getLLMKeyCount();
-                    webview.postMessage({ type: 'providerChanged', providerId: data.providerId, keyCount });
+                    const providerState = controller.getProviderState();
+                    webview.postMessage({
+                        type: 'providerChanged',
+                        providerId: providerState.providerId,
+                        hasApiKey: !!providerState.apiKey,
+                        baseUrl: providerState.baseUrl,
+                        keyCount
+                    });
                 }
                 break;
             }

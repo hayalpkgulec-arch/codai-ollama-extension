@@ -68,7 +68,7 @@ export class TaskController {
 
     public async changeProvider(providerId: string, apiKey: string, baseUrl: string, apiKeys?: string[]) {
         const def = PROVIDER_DEFS[providerId as keyof typeof PROVIDER_DEFS];
-        const resolvedUrl = baseUrl || (def?.baseUrl ?? 'http://localhost:11434');
+        const resolvedUrl = (baseUrl || (def?.baseUrl ?? 'http://localhost:11434')).replace(/\/+$/, '');
         // apiKeys dizisi varsa kullan; yoksa apiKey'i tek elemanlı dizi yap
         const resolvedKeys = (apiKeys && apiKeys.length > 0)
             ? apiKeys.filter(k => k.trim())

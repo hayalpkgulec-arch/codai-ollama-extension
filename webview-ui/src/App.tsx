@@ -87,6 +87,7 @@ export default function App() {
   // / Slash command menu
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
+  const isProviderLocal = providerInfo.providerId === 'ollama' || providerInfo.providerId === 'custom';
 
   // ── History ────────────────────────────────────────────────────────────────
   const {
@@ -112,9 +113,9 @@ export default function App() {
       setModel(found);
     } else {
       // Listede yoksa dynamic olarak ekle
-      setModel({ id: initialModel, label: initialModel, tag: 'local' });
+      setModel({ id: initialModel, label: initialModel, tag: isProviderLocal ? 'local' : 'cloud' });
     }
-  }, [initialModel]);
+  }, [initialModel, isProviderLocal]);
 
   // BUG 14 FIX: Ollama'dan dinamik model listesi — uygulama açılışında çek
   useEffect(() => {
@@ -428,14 +429,18 @@ export default function App() {
           onApiKeyChange={setSettingsApiKey}
           onBaseUrlChange={setSettingsBaseUrl}
           onClose={() => setShowSettings(false)}
-          onProviderModels={(models) => {
-            const dynamicLocal = models.map(m => ({ id: m.id, label: m.label, tag: 'local' as const }));
-            setDynamicModels(dynamicLocal);
+          onProviderModels={(_providerId, models, isLocal) => {
+            const dynamicProviderModels = models.map(m => ({
+              id: m.id,
+              label: m.label,
+              tag: isLocal ? 'local' as const : 'cloud' as const,
+            }));
+            setDynamicModels(dynamicProviderModels);
           }}
           onModelSelect={(modelId) => {
             const found = allModels.find(m => m.id === modelId);
             if (found) setModel(found);
-            else setModel({ id: modelId, label: modelId, tag: 'local' });
+            else setModel({ id: modelId, label: modelId, tag: isProviderLocal ? 'local' : 'cloud' });
           }}
         />
       </div>

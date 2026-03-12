@@ -554,7 +554,12 @@ export function useVSCodeMessage() {
         // providerChanged — provider başarıyla değişti
         case 'providerChanged':
           if (msg.providerId) {
-            setProviderInfo(prev => ({ ...prev, providerId: msg.providerId }));
+            setProviderInfo(prev => ({
+              ...prev,
+              providerId: msg.providerId,
+              hasApiKey: typeof msg.hasApiKey === 'boolean' ? msg.hasApiKey : prev.hasApiKey,
+              baseUrl: typeof msg.baseUrl === 'string' && msg.baseUrl ? msg.baseUrl : prev.baseUrl,
+            }));
           }
           break;
       }
