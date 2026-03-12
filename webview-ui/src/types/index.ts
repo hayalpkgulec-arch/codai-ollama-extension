@@ -7,6 +7,17 @@ export interface ProviderSavedConfig {
   hasApiKey?: boolean;
 }
 
+export interface ContextWindowStats {
+  contextTokens: number;
+  contextChars: number;
+  maxContextTokens: number;
+  tokensLeft: number;
+  percentUsed: number;
+  autoCompactEnabled: boolean;
+  lastCompactionAt: number | null;
+  compactedMessageCount: number;
+}
+
 // ── Auto-approve config ───────────────────────────────────────────────────────
 export interface AutoApproveConfig {
   read_file: boolean;

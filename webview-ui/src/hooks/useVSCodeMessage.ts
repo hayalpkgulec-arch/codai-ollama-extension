@@ -1,5 +1,14 @@
-import { useEffect, useState, useCallback } from 'react';
-import type { ChatMessage, Segment, ToolCall, AgentMode, WizardQuestion, PlanSavedPayload, ProviderSavedConfig } from '../types';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import type {
+  ChatMessage,
+  Segment,
+  ToolCall,
+  AgentMode,
+  WizardQuestion,
+  PlanSavedPayload,
+  ProviderSavedConfig,
+  ContextWindowStats,
+} from '../types';
 import { vscode } from '../vscode';
 
 // ── Immutable last-element update ────────────────────────────────────────────
@@ -137,7 +146,8 @@ export function useVSCodeMessage() {
   const [pendingQuestions, setPendingQuestions] = useState<WizardQuestion[] | null>(null);
   const [planSaved, setPlanSaved] = useState<PlanSavedPayload | null>(null);
   const [taskDone, setTaskDone] = useState<string | null>(null);
-  const [tokenCount, setTokenCount] = useState<{ contextTokens: number; contextChars: number } | null>(null);
+  const [tokenCount, setTokenCount] = useState<ContextWindowStats | null>(null);
+  const [contextCompactionNotice, setContextCompactionNotice] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   // BUG 8 FIX: initialModel backend'den restore edilir
   const [initialModel, setInitialModel] = useState<string | null>(null);
@@ -154,6 +164,7 @@ export function useVSCodeMessage() {
     baseUrl: string;
     configs: Record<string, ProviderSavedConfig>;
   }>({ providerId: 'ollama', hasApiKey: false, baseUrl: 'http://localhost:11434', configs: {} });
+  const lastCompactionSeenRef = useRef<number | null>(null);
 
   const bumpScroll = useCallback(() => setScrollTick(t => t + 1), []);
   const clearMessages = useCallback(() => {
@@ -174,6 +185,20 @@ export function useVSCodeMessage() {
           if (msg.mode) setMode(msg.mode as AgentMode);
           if (typeof msg.model === 'string' && msg.model) {
             setInitialModel(msg.model);
+          }
+          if (msg.tokenCount) {
+            const nextTokenCount: ContextWindowStats = {
+              contextTokens: msg.tokenCount.contextTokens ?? 0,
+              contextChars: msg.tokenCount.contextChars ?? 0,
+              maxContextTokens: msg.tokenCount.maxContextTokens ?? 0,
+              tokensLeft: msg.tokenCount.tokensLeft ?? 0,
+              percentUsed: msg.tokenCount.percentUsed ?? 0,
+              autoCompactEnabled: msg.tokenCount.autoCompactEnabled ?? true,
+              lastCompactionAt: msg.tokenCount.lastCompactionAt ?? null,
+              compactedMessageCount: msg.tokenCount.compactedMessageCount ?? 0,
+            };
+            lastCompactionSeenRef.current = nextTokenCount.lastCompactionAt;
+            setTokenCount(nextTokenCount);
           }
           // Provider state restore
           if (msg.provider) {
@@ -196,6 +221,7 @@ export function useVSCodeMessage() {
         case 'turnStart':
           setIsProcessing(true);
           setIsStreaming(false);
+          setContextCompactionNotice(null);
           setTaskDone(null);
           setPendingQuestion(null);
           setPendingQuestions(null);
@@ -452,6 +478,7 @@ export function useVSCodeMessage() {
 
         // ── Session loaded (restore from history) ───────────────────────
         case 'sessionLoaded':
+          setContextCompactionNotice(null);
           if (Array.isArray(msg.messages) && msg.messages.length > 0) {
             // Messages are already in UI segment format (saved by App.tsx)
             const restored = msg.messages.map((m: any, i: number) => ({
@@ -478,6 +505,7 @@ export function useVSCodeMessage() {
 
         case 'clearHistory':
           clearMessages();
+          setContextCompactionNotice(null);
           setTodoItems('');
           setPendingQuestion(null);
           setPendingQuestions(null);
@@ -533,7 +561,21 @@ export function useVSCodeMessage() {
           setTokenCount({
             contextTokens: msg.contextTokens ?? 0,
             contextChars: msg.contextChars ?? 0,
+            maxContextTokens: msg.maxContextTokens ?? 0,
+            tokensLeft: msg.tokensLeft ?? 0,
+            percentUsed: msg.percentUsed ?? 0,
+            autoCompactEnabled: msg.autoCompactEnabled ?? true,
+            lastCompactionAt: msg.lastCompactionAt ?? null,
+            compactedMessageCount: msg.compactedMessageCount ?? 0,
           });
+          if (
+            typeof msg.lastCompactionAt === 'number' &&
+            msg.lastCompactionAt > 0 &&
+            msg.lastCompactionAt !== lastCompactionSeenRef.current
+          ) {
+            lastCompactionSeenRef.current = msg.lastCompactionAt;
+            setContextCompactionNotice('Automatically compacting context');
+          }
           break;
 
         // ── BUG 10 FIX: Aktif dosya context yanıtı ──────────────────────
@@ -579,6 +621,12 @@ export function useVSCodeMessage() {
     return () => window.removeEventListener('message', handle);
   }, [clearMessages, bumpScroll]);
 
+  useEffect(() => {
+    if (!contextCompactionNotice) return;
+    const timer = window.setTimeout(() => setContextCompactionNotice(null), 4200);
+    return () => window.clearTimeout(timer);
+  }, [contextCompactionNotice]);
+
   // ── Auto-detect checklist in plan mode ──────────────────────────────────────
   useEffect(() => {
     if (mode !== 'plan') return;
@@ -606,6 +654,7 @@ export function useVSCodeMessage() {
     planSaved, setPlanSaved,
     taskDone, setTaskDone,
     tokenCount,
+    contextCompactionNotice,
     isStreaming,
     initialModel,
     iterationCount,

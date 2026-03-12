@@ -50,6 +50,7 @@ export default function App() {
     planSaved, setPlanSaved,
     taskDone, setTaskDone,
     tokenCount,
+    contextCompactionNotice,
     isStreaming,
     initialModel,
     iterationCount,
@@ -743,6 +744,12 @@ export default function App() {
                 iterationCount={iterationCount}
                 lastMessageHasContent={lastAssistantHasVisibleContent}
               />
+            )}
+
+            {contextCompactionNotice && (
+              <div className="context-compact-banner" role="status" aria-live="polite">
+                <span className="context-compact-banner-text">{contextCompactionNotice}</span>
+              </div>
             )}
 
             <div ref={endRef} />

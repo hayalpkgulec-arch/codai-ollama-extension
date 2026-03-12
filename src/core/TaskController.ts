@@ -261,16 +261,18 @@ export class TaskController {
     public postInitialState() {
         if (!this._view) return;
         // Include tool messages so the frontend can reconstruct tool-call segments on panel reload
-        const historyForUi = this.workspaceManager.getConversationHistory().filter(
+        const historyForUi = this.workspaceManager.getTranscriptHistory().filter(
             (m) => m.role === 'user' || m.role === 'assistant' || (m.role as string) === 'tool'
         );
         const ps = this.workspaceManager.getProviderState();
         const providerConfigs = this.workspaceManager.getProviderConfigs();
+        const tokenInfo = this.workspaceManager.estimateTokenCount();
         this._view.postMessage({
             type: 'initialState',
             history: historyForUi,
             mode: this.workspaceManager.getMode(),
             model: this.workspaceManager.getDefaultModel(),
+            tokenCount: tokenInfo,
             // Provider state — frontend settings panelini restore eder
             provider: {
                 providerId: ps.providerId,
@@ -577,6 +579,27 @@ export class TaskController {
      * run_command: stdout+stderr truncated to 8000 chars total
      * write_file / large results: strip binary/preview data before storing
      */
+    private normalizeToolCall(toolCall: any, iteration: number, index: number) {
+        const rawArgs = toolCall?.function?.arguments;
+        const stringArgs = typeof rawArgs === 'string'
+            ? rawArgs
+            : JSON.stringify(rawArgs ?? {});
+        const toolName = this.normalizeToolName(
+            typeof toolCall?.function?.name === 'string' ? toolCall.function.name : ''
+        );
+
+        return {
+            id: typeof toolCall?.id === 'string' && toolCall.id.trim()
+                ? toolCall.id
+                : `tool_call_${iteration}_${index}_${Date.now()}`,
+            type: 'function' as const,
+            function: {
+                name: toolName,
+                arguments: stringArgs,
+            },
+        };
+    }
+
     private compactToolResult(rawResult: string, toolName: string): string {
         const MAX_RESULT = 8000;
         if (!rawResult || typeof rawResult !== 'string') return String(rawResult ?? '');
@@ -851,40 +874,39 @@ export class TaskController {
                     // Kurtarılamaz hata
                     continueLoop = false;
                     this.emitTurnEvent(turnRequestId, 'error', { message: msg || 'LLM request failed' });
-            // Emit token usage estimate after each turn
-            const tokenInfo = this.workspaceManager.estimateTokenCount();
-            this.emitTurnEvent(turnRequestId, 'tokenCount', tokenInfo);
-
-            this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
-            this.turnSequenceByRequestId.delete(turnRequestId);
+                    this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
+                    this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
+                    this.turnSequenceByRequestId.delete(turnRequestId);
                     return;
                 }
 
                 // ── Tool çağrıları ─────────────────────────────────────────────
-                const toolCalls = response?.message?.tool_calls ?? response?.tool_calls ?? [];
+                const rawToolCalls = response?.message?.tool_calls ?? response?.tool_calls ?? [];
+                const toolCalls = Array.isArray(rawToolCalls)
+                    ? rawToolCalls
+                        .map((toolCall, index) => this.normalizeToolCall(toolCall, iteration, index))
+                        .filter((toolCall) => toolCall.function.name)
+                    : [];
 
                 if (toolCalls.length > 0) {
                     this.workspaceManager.appendToHistory({
                         role: 'assistant',
-                        content: response?.message?.content || '',
+                        content: response?.message?.content ?? null,
                         tool_calls: toolCalls
                     });
 
                     for (const toolCall of toolCalls) {
-                        const rawToolName = toolCall?.function?.name;
-                        const toolArgs = this.parseToolArguments(toolCall?.function?.arguments);
-                        const toolName = this.normalizeToolName(rawToolName);
-
-                        if (!toolName) continue;
+                        const toolArgs = this.parseToolArguments(toolCall.function.arguments);
+                        const toolName = toolCall.function.name;
 
                         const startedAt = Date.now();
                         const summary = this.buildToolSummary(toolName, toolArgs);
-                        const toolPhaseId = `tool-${toolCall?.id || `${iteration}-${toolName}-${startedAt}-${Math.random().toString(36).slice(2, 6)}`}`;
+                        const toolPhaseId = `tool-${toolCall.id || `${iteration}-${toolName}-${startedAt}-${Math.random().toString(36).slice(2, 6)}`}`;
 
                         const autoApproved = this.isAutoApproved(toolName);
                         this.emitTurnEvent(turnRequestId, 'toolActivityStart', {
                             phaseId: toolPhaseId, toolName, args: toolArgs,
-                            status: 'running', summary, startedAt, toolCallId: toolCall?.id,
+                            status: 'running', summary, startedAt, toolCallId: toolCall.id,
                             autoApproved,
                         });
 
@@ -906,7 +928,7 @@ export class TaskController {
                             this.workspaceManager.appendToHistory({
                                 role: 'tool',
                                 content: `WARNING: There is already a background process running (${names}). Stop it first with killBgProcess before starting a new long-running process. If this is a short command (npm install, tsc, etc.) it is safe to proceed.`,
-                                tool_call_id: toolCall?.id,
+                                tool_call_id: toolCall.id,
                             });
                         }
 
@@ -920,14 +942,14 @@ export class TaskController {
                         this.workspaceManager.appendToHistory({
                             role: 'tool',
                             content: historyContent,
-                            tool_call_id: toolCall?.id
+                            tool_call_id: toolCall.id
                         });
                         await this.workspaceManager.persistState();
 
                         if (normalizedResult.status === 'error') {
-                            this.emitTurnEvent(turnRequestId, 'toolActivityError', { phaseId: toolPhaseId, toolCallId: toolCall?.id, ...normalizedResult });
+                            this.emitTurnEvent(turnRequestId, 'toolActivityError', { phaseId: toolPhaseId, toolCallId: toolCall.id, ...normalizedResult });
                         } else {
-                            this.emitTurnEvent(turnRequestId, 'toolActivityDone', { phaseId: toolPhaseId, toolCallId: toolCall?.id, ...normalizedResult });
+                            this.emitTurnEvent(turnRequestId, 'toolActivityDone', { phaseId: toolPhaseId, toolCallId: toolCall.id, ...normalizedResult });
                         }
 
                         activePhaseId = toolPhaseId;
@@ -941,7 +963,7 @@ export class TaskController {
                                 this.workspaceManager.appendToHistory({
                                     role: 'tool',
                                     content: 'task_notes: Duplicate plan detected. Use attempt_completion to finish.',
-                                    tool_call_id: toolCall?.id,
+                                    tool_call_id: toolCall.id,
                                 });
                                 break;
                             }
@@ -975,7 +997,12 @@ export class TaskController {
                     }
                 } else {
                     // ── Final yanıt ───────────────────────────────────────────
-                    const finalContent = response?.message?.content || lastContentSnapshot || '';
+                    const rawFinalContent = response?.message?.content;
+                    const finalContent = typeof rawFinalContent === 'string'
+                        ? rawFinalContent
+                        : rawFinalContent == null
+                            ? (lastContentSnapshot || '')
+                            : JSON.stringify(rawFinalContent);
                     this.workspaceManager.appendToHistory({ role: 'assistant', content: finalContent });
                     this.emitTurnEvent(turnRequestId, 'finalResponse', { content: finalContent });
                     await this.workspaceManager.persistState();
@@ -987,12 +1014,14 @@ export class TaskController {
                 }
             }
 
+            this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
             this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
             this.turnSequenceByRequestId.delete(turnRequestId);
 
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'Unknown error';
             this.emitTurnEvent(turnRequestId, 'error', { message: msg });
+            this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
             this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
             this.turnSequenceByRequestId.delete(turnRequestId);
         } finally {

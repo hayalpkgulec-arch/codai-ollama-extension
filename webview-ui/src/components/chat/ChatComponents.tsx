@@ -894,8 +894,6 @@ export interface AssistantMessageProps {
 }
 
 export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry, onQuote }: AssistantMessageProps) => {
-  const hasAnyContent = msg.segments.length > 0 || msg.error;
-  const isWaitingForOutput = msg.isStreaming && !hasAnyContent;
 
   // Mesajda hiç tool var mı? Varsa content segmentlerini gösterme kuralı:
   // - Tool'lar running iken aradaki content segmentleri gizlenir
@@ -934,10 +932,6 @@ export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry, onQuo
         }
         return null;
       })}
-
-      {isWaitingForOutput && (
-        <span className="typing-dots"><span /><span /><span /></span>
-      )}
 
       {msg.error && (
         <div className="err-pill">

@@ -18,13 +18,28 @@ export interface ProviderConfig {
     baseUrl: string;
 }
 
+interface ContextWindowStats {
+    contextTokens: number;
+    contextChars: number;
+    maxContextTokens: number;
+    tokensLeft: number;
+    percentUsed: number;
+    autoCompactEnabled: boolean;
+    lastCompactionAt: number | null;
+    compactedMessageCount: number;
+}
+
 export class WorkspaceManager {
     private conversationHistory: Message[] = [];
+    private transcriptHistory: Message[] = [];
     private defaultModel: string;
     private indexedProjectContext = '';
     private isIndexing = false;
     private agentMode: AgentMode = 'code';
     private settings = { autoIndexOnOpen: true };
+    private compactedContextSummary = '';
+    private lastCompactionAt: number | null = null;
+    private compactedMessageCount = 0;
 
     // ── Plan state ─────────────────────────────────────────────────────────────
     private planTodos = '';
@@ -50,6 +65,7 @@ export class WorkspaceManager {
         this.loadPersistedState();
         this.syncCurrentProviderState();
         this.syncSystemMessage();
+        return;
     }
 
     private getWorkspaceKey(suffix: string): string {
@@ -62,26 +78,54 @@ export class WorkspaceManager {
         return getModeSystemPrompt(this.agentMode, this.indexedProjectContext || undefined, cwd);
     }
 
+    private getCompactedContextPrompt(): string {
+        if (!this.compactedContextSummary.trim()) return '';
+        return `\n\n<compacted_context>\nOlder conversation was compacted to stay within the context budget. Full raw chat history is still preserved locally.\nUse this summary as the canonical reference for earlier turns.\n\n${this.compactedContextSummary.trim()}\n</compacted_context>`;
+    }
+
+    private upsertSystemMessage(history: Message[], content: string): Message[] {
+        const next = [...history];
+        if (!next.length || next[0].role !== 'system') {
+            next.unshift({ role: 'system', content });
+            return next;
+        }
+        next[0] = { ...next[0], content };
+        return next;
+    }
+
     public syncSystemMessage() {
         const effective = this.getEffectiveSystemPrompt();
-        if (!this.conversationHistory.length || this.conversationHistory[0].role !== 'system') {
-            this.conversationHistory.unshift({ role: 'system', content: effective });
-            return;
-        }
-        this.conversationHistory[0].content = effective;
+        const activeSystemPrompt = `${effective}${this.getCompactedContextPrompt()}`;
+        this.conversationHistory = this.upsertSystemMessage(this.conversationHistory, activeSystemPrompt);
+        this.transcriptHistory = this.upsertSystemMessage(this.transcriptHistory, effective);
+    }
+
+    private normalizeHistory(history: Message[]): Message[] {
+        if (!Array.isArray(history)) return [];
+        return history
+            .map((message) => this.normalizeMessage(message))
+            .filter((message) => message.role === 'system' || message.role === 'user' || message.role === 'assistant' || message.role === 'tool');
     }
 
     private loadPersistedState() {
         // Workspace-specific state
         const state = this._extensionContext.workspaceState.get<any>(this.getWorkspaceKey('state'));
         if (state) {
-            if (Array.isArray(state.conversationHistory)) this.conversationHistory = state.conversationHistory;
+            if (Array.isArray(state.conversationHistory)) this.conversationHistory = this.normalizeHistory(state.conversationHistory);
+            if (Array.isArray(state.transcriptHistory)) this.transcriptHistory = this.normalizeHistory(state.transcriptHistory);
             if (typeof state.defaultModel === 'string') this.defaultModel = state.defaultModel;
             if (typeof state.indexedProjectContext === 'string') this.indexedProjectContext = state.indexedProjectContext;
             if (state.settings?.autoIndexOnOpen != null) this.settings.autoIndexOnOpen = state.settings.autoIndexOnOpen;
             if (state.agentMode) this.agentMode = state.agentMode as AgentMode;
             if (typeof state.planTodos === 'string') this.planTodos = state.planTodos;
             if (typeof state.planSummary === 'string') this.planSummary = state.planSummary;
+            if (typeof state.compactedContextSummary === 'string') this.compactedContextSummary = state.compactedContextSummary;
+            if (typeof state.lastCompactionAt === 'number') this.lastCompactionAt = state.lastCompactionAt;
+            if (typeof state.compactedMessageCount === 'number') this.compactedMessageCount = state.compactedMessageCount;
+        }
+
+        if (!this.transcriptHistory.length && this.conversationHistory.length) {
+            this.transcriptHistory = this.normalizeHistory(this.conversationHistory);
         }
 
         // Global provider state (tüm workspace'lerde ortak — globalState)
@@ -110,12 +154,16 @@ export class WorkspaceManager {
     public async persistState() {
         await this._extensionContext.workspaceState.update(this.getWorkspaceKey('state'), {
             conversationHistory: this.conversationHistory,
+            transcriptHistory: this.transcriptHistory,
             defaultModel: this.defaultModel,
             indexedProjectContext: this.indexedProjectContext,
             settings: this.settings,
             agentMode: this.agentMode,
             planTodos: this.planTodos,
             planSummary: this.planSummary,
+            compactedContextSummary: this.compactedContextSummary,
+            lastCompactionAt: this.lastCompactionAt,
+            compactedMessageCount: this.compactedMessageCount,
         });
     }
 
@@ -151,13 +199,27 @@ export class WorkspaceManager {
      * Rough token count estimate: characters / 4 (standard heuristic).
      * Good enough for display purposes without a real tokenizer.
      */
-    public estimateTokenCount(): { contextTokens: number; contextChars: number } {
+    public estimateTokenCount(): ContextWindowStats {
+        const maxContextTokens = 80_000;
         const historyText = this.conversationHistory
             .map(m => typeof m.content === 'string' ? m.content : JSON.stringify(m.content))
             .join(' ');
         const contextChars = historyText.length;
         const contextTokens = Math.round(contextChars / 4);
-        return { contextTokens, contextChars };
+        const tokensLeft = Math.max(0, maxContextTokens - contextTokens);
+        const percentUsed = maxContextTokens > 0
+            ? Math.min(100, Math.round((contextTokens / maxContextTokens) * 100))
+            : 0;
+        return {
+            contextTokens,
+            contextChars,
+            maxContextTokens,
+            tokensLeft,
+            percentUsed,
+            autoCompactEnabled: true,
+            lastCompactionAt: this.lastCompactionAt,
+            compactedMessageCount: this.compactedMessageCount,
+        };
     }
 
     /**
@@ -269,12 +331,17 @@ export class WorkspaceManager {
 
     // ── Getters ───────────────────────────────────────────────────────────────
     public getSettings() { return this.settings; }
-    public getSystemPrompt(): string { return this.conversationHistory[0]?.content || ''; }
+    public getSystemPrompt(): string { return this.transcriptHistory[0]?.content || this.conversationHistory[0]?.content || ''; }
     public getConversationHistory() { return this.conversationHistory; }
+    public getTranscriptHistory() { return this.transcriptHistory; }
     public getDefaultModel() { return this.defaultModel; }
 
     public clearHistory() {
         this.conversationHistory = [];
+        this.transcriptHistory = [];
+        this.compactedContextSummary = '';
+        this.lastCompactionAt = null;
+        this.compactedMessageCount = 0;
         this.clearPlanState();
         this.syncSystemMessage();
         this.persistState();
@@ -286,12 +353,9 @@ export class WorkspaceManager {
     }
 
     public updateSystemPrompt(prompt: string) {
-        // When user manually overrides, use it directly (don't re-apply mode template)
-        if (this.conversationHistory.length && this.conversationHistory[0].role === 'system') {
-            this.conversationHistory[0].content = prompt;
-        } else {
-            this.conversationHistory.unshift({ role: 'system', content: prompt });
-        }
+        // When user manually overrides, keep transcript and active context aligned.
+        this.conversationHistory = this.upsertSystemMessage(this.conversationHistory, prompt);
+        this.transcriptHistory = this.upsertSystemMessage(this.transcriptHistory, prompt);
         this.persistState();
     }
 
@@ -303,7 +367,98 @@ export class WorkspaceManager {
         }
     }
 
+    private normalizeMessage(message: Message): Message {
+        const normalizedContent = message.content == null
+            ? null
+            : typeof message.content === 'string'
+                ? message.content
+                : JSON.stringify(message.content);
+
+        const normalizedToolCalls = Array.isArray(message.tool_calls)
+            ? message.tool_calls
+                .map((toolCall, index) => {
+                    const rawArgs = toolCall?.function?.arguments;
+                    const stringArgs = typeof rawArgs === 'string'
+                        ? rawArgs
+                        : JSON.stringify(rawArgs ?? {});
+                    const name = typeof toolCall?.function?.name === 'string' ? toolCall.function.name : '';
+                    if (!name) return null;
+                    return {
+                        id: typeof toolCall?.id === 'string' && toolCall.id.trim()
+                            ? toolCall.id
+                            : `tool_call_${Date.now()}_${index}`,
+                        type: 'function' as const,
+                        function: {
+                            name,
+                            arguments: stringArgs,
+                        },
+                    };
+                })
+                .filter((toolCall): toolCall is NonNullable<typeof toolCall> => Boolean(toolCall))
+            : undefined;
+
+        return {
+            role: message.role,
+            content: normalizedContent,
+            tool_calls: normalizedToolCalls,
+            tool_call_id: typeof message.tool_call_id === 'string' ? message.tool_call_id : undefined,
+            name: typeof message.name === 'string' ? message.name : undefined,
+        };
+    }
+
+    private stripEnvironmentDetails(history: Message[]): Message[] {
+        return history.map((message) => {
+            if (message.role !== 'user' || typeof message.content !== 'string') return message;
+            const stripped = message.content.replace(/\n\n<environment_details>[\s\S]*?<\/environment_details>/g, '').trim();
+            return stripped === message.content ? message : { ...message, content: stripped };
+        });
+    }
+
+    private messageSize(message: Message): number {
+        let total = typeof message.content === 'string' ? message.content.length : 0;
+        if (Array.isArray(message.tool_calls)) total += JSON.stringify(message.tool_calls).length;
+        if (typeof message.tool_call_id === 'string') total += message.tool_call_id.length;
+        if (typeof message.name === 'string') total += message.name.length;
+        return total;
+    }
+
+    private summarizeCompactedMessage(message: Message): string {
+        const role = message.role.toUpperCase();
+        const content = typeof message.content === 'string'
+            ? message.content.replace(/\s+/g, ' ').trim()
+            : '';
+        const contentPreview = content
+            ? content.slice(0, 240) + (content.length > 240 ? '…' : '')
+            : '(no text content)';
+        const toolCallPreview = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+            ? ` tools=${message.tool_calls
+                .map((toolCall) => `${toolCall.function.name}(${String(toolCall.function.arguments).slice(0, 80)})`)
+                .join(', ')}`
+            : '';
+        return `- ${role}: ${contentPreview}${toolCallPreview}`;
+    }
+
+    private appendCompactionSummary(messages: Message[]): void {
+        if (messages.length === 0) return;
+        const batchHeader = `Batch ${new Date().toISOString()} · ${messages.length} message${messages.length === 1 ? '' : 's'}`;
+        const batchBody = messages.map((message) => this.summarizeCompactedMessage(message)).join('\n');
+        const nextSummary = [this.compactedContextSummary.trim(), `${batchHeader}\n${batchBody}`]
+            .filter(Boolean)
+            .join('\n\n');
+
+        const MAX_SUMMARY_CHARS = 48_000;
+        this.compactedContextSummary = nextSummary.length > MAX_SUMMARY_CHARS
+            ? `Earlier compacted batches are preserved in the raw transcript. Recent compacted summary follows.\n\n${nextSummary.slice(-MAX_SUMMARY_CHARS)}`
+            : nextSummary;
+    }
+
     public appendToHistory(message: Message) {
+        const normalizedMessage = this.normalizeMessage(message);
+        this.transcriptHistory.push(normalizedMessage);
+        this.conversationHistory = this.stripEnvironmentDetails(this.conversationHistory);
+        this.conversationHistory.push(normalizedMessage);
+        this.compactHistory();
+        this.syncSystemMessage();
         // B07 FIX: Strip environment_details from old user messages before adding new one.
         // environment_details is only useful for the CURRENT message — old ones waste tokens.
         this.conversationHistory = this.conversationHistory.map(m => {
@@ -315,6 +470,43 @@ export class WorkspaceManager {
         this.conversationHistory.push(message);
         // T14 FIX: Context window koruması — geçmişi trim et
         this.trimHistory();
+    }
+
+    private compactHistory(): void {
+        const MAX_HISTORY_CHARS = 320_000; // ~80k tokens
+        const TARGET_HISTORY_CHARS = 240_000;
+        const MIN_MESSAGES_TO_KEEP = 8;
+
+        let totalChars = 0;
+        for (const message of this.conversationHistory) {
+            totalChars += this.messageSize(message);
+        }
+
+        if (totalChars <= MAX_HISTORY_CHARS) return;
+
+        const systemMsg = this.conversationHistory[0]?.role === 'system'
+            ? this.conversationHistory[0]
+            : null;
+        let nonSystem = systemMsg
+            ? this.conversationHistory.slice(1)
+            : [...this.conversationHistory];
+        const compactedBatch: Message[] = [];
+
+        while (nonSystem.length > MIN_MESSAGES_TO_KEEP && totalChars > TARGET_HISTORY_CHARS) {
+            const removed = nonSystem.shift()!;
+            compactedBatch.push(removed);
+            totalChars -= this.messageSize(removed);
+        }
+
+        if (compactedBatch.length > 0) {
+            this.appendCompactionSummary(compactedBatch);
+            this.lastCompactionAt = Date.now();
+            this.compactedMessageCount += compactedBatch.length;
+        }
+
+        this.conversationHistory = systemMsg
+            ? [systemMsg, ...nonSystem]
+            : nonSystem;
     }
 
     /**

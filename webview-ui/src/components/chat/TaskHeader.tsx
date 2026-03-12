@@ -4,13 +4,14 @@
  */
 import { useEffect, useState } from 'react';
 import { Clock, MessageSquare, Cpu } from 'lucide-react';
+import type { ContextWindowStats } from '../../types';
 
 interface TaskHeaderProps {
   title?: string;
   startedAt?: number;
   isProcessing: boolean;
   messageCount: number;
-  tokenCount?: { contextTokens: number; contextChars: number } | null;
+  tokenCount?: ContextWindowStats | null;
 }
 
 function useElapsed(startedAt: number | undefined, isProcessing: boolean): string | undefined {
@@ -40,8 +41,15 @@ function formatTokens(n: number): string {
   return `${Math.round(n / 1000)}k`;
 }
 
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return '0%';
+  return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
+}
+
 export function TaskHeader({ title, startedAt, isProcessing, messageCount, tokenCount }: TaskHeaderProps) {
   const elapsed = useElapsed(startedAt, isProcessing);
+  const percentUsed = tokenCount?.percentUsed ?? 0;
+  const percentLeft = Math.max(0, 100 - percentUsed);
 
   if (!title && messageCount === 0) return null;
 
@@ -52,10 +60,24 @@ export function TaskHeader({ title, startedAt, isProcessing, messageCount, token
       </div>
       <div className="task-header-stats">
         {tokenCount && tokenCount.contextTokens > 0 && (
-          <span className="task-header-tokens" title={`~${tokenCount.contextTokens.toLocaleString()} tokens in context`}>
-            <Cpu size={10} />
-            {formatTokens(tokenCount.contextTokens)}
-          </span>
+          <div className="task-header-context">
+            <span className="task-header-tokens">
+              <Cpu size={10} />
+              {formatPercent(percentUsed)}
+            </span>
+            <div className="task-header-context-popover" role="note">
+              <div className="task-header-context-title">Context window:</div>
+              <div className="task-header-context-strong">
+                {formatPercent(percentUsed)} used ({formatPercent(percentLeft)} left)
+              </div>
+              <div className="task-header-context-meta">
+                {formatTokens(tokenCount.contextTokens)} / {formatTokens(tokenCount.maxContextTokens || tokenCount.contextTokens)} tokens used
+              </div>
+              <div className="task-header-context-note">
+                CodAI automatically compacts its context
+              </div>
+            </div>
+          </div>
         )}
         {elapsed && (
           <span className="task-header-elapsed">

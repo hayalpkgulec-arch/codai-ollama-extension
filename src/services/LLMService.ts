@@ -166,6 +166,92 @@ export class LLMService {
     }
 
     // Artık kullanılmıyor — raw stream text olduğu gibi kullanılıyor
+    private normalizeMessageContent(content: Message['content']): string | null {
+        if (content == null) return null;
+        return typeof content === 'string' ? content : JSON.stringify(content);
+    }
+
+    private normalizeToolCalls(toolCalls: Message['tool_calls']): Array<{
+        id: string;
+        type: 'function';
+        function: {
+            name: string;
+            arguments: string;
+        };
+    }> | undefined {
+        if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
+
+        const normalized = toolCalls
+            .map((toolCall, index) => {
+                const name = typeof toolCall?.function?.name === 'string'
+                    ? toolCall.function.name.trim()
+                    : '';
+                if (!name) return null;
+
+                const rawArgs = toolCall?.function?.arguments;
+                const serializedArgs = typeof rawArgs === 'string'
+                    ? rawArgs
+                    : JSON.stringify(rawArgs ?? {});
+
+                return {
+                    id: typeof toolCall?.id === 'string' && toolCall.id.trim()
+                        ? toolCall.id
+                        : `tool_call_${Date.now()}_${index}`,
+                    type: 'function' as const,
+                    function: {
+                        name,
+                        arguments: serializedArgs,
+                    },
+                };
+            })
+            .filter((toolCall): toolCall is NonNullable<typeof toolCall> => Boolean(toolCall));
+
+        return normalized.length > 0 ? normalized : undefined;
+    }
+
+    private toOpenAICompatibleMessages(messages: Message[]): any[] {
+        const pendingToolIds = new Set<string>();
+        const normalizedMessages: any[] = [];
+
+        for (const message of messages) {
+            const role = message.role;
+            const content = this.normalizeMessageContent(message.content);
+            const normalizedToolCalls = this.normalizeToolCalls(message.tool_calls);
+            const base: any = { role };
+
+            if (role === 'assistant') {
+                base.content = normalizedToolCalls ? (content ?? null) : (content ?? '');
+                if (normalizedToolCalls) {
+                    base.tool_calls = normalizedToolCalls;
+                    for (const toolCall of normalizedToolCalls) {
+                        pendingToolIds.add(toolCall.id);
+                    }
+                }
+                if (typeof message.name === 'string' && message.name.trim()) base.name = message.name;
+                normalizedMessages.push(base);
+                continue;
+            }
+
+            if (role === 'tool') {
+                if (typeof message.tool_call_id !== 'string' || !pendingToolIds.has(message.tool_call_id)) {
+                    continue;
+                }
+                base.content = content ?? '';
+                base.tool_call_id = message.tool_call_id;
+                pendingToolIds.delete(message.tool_call_id);
+                if (typeof message.name === 'string' && message.name.trim()) base.name = message.name;
+                normalizedMessages.push(base);
+                continue;
+            }
+
+            base.content = content ?? '';
+            if (typeof message.name === 'string' && message.name.trim()) base.name = message.name;
+            normalizedMessages.push(base);
+        }
+
+        return normalizedMessages;
+    }
+
     static fixSpacing(text: string): string {
         return text;
     }
@@ -339,14 +425,7 @@ export class LLMService {
             function: { name: t.name, description: t.description, parameters: t.parameters }
         })) : undefined;
 
-        // Convert Ollama-style messages to OpenAI format
-        const openAIMessages = messages.map(m => {
-            const base: any = { role: m.role, content: m.content };
-            if (m.tool_calls) base.tool_calls = m.tool_calls;
-            if (m.tool_call_id) base.tool_call_id = m.tool_call_id;
-            if (m.name) base.name = m.name;
-            return base;
-        });
+        const openAIMessages = this.toOpenAICompatibleMessages(messages);
 
         const body: any = {
             model,

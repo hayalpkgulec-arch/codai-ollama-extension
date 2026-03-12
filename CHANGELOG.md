@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.44] - 2026-03-12
+### Fixed
+- OpenAI-compatible provider requests now normalize assistant tool calls, tool call IDs, and message content before sending history back to Mistral, OpenRouter, Gemini, and similar providers
+- Persisted chat history is sanitized on reload so stale `tool_calls` payloads from older sessions no longer leak unsupported fields back into provider requests
+- The extra three-dot waiting indicator above `Generating...` was removed
+
+### Changed
+- Chat context now keeps a full local transcript while compacting the active model context window when it grows too large
+- The header now shows context usage with an auto-compaction hover summary, and the chat stream shows a temporary `Automatically compacting context` notice when compaction runs
+
+---
+
 ## [0.0.43] - 2026-03-12
 ### Fixed
 - The inline `working` badge was removed from the composer so it no longer collides with the send or stop control
