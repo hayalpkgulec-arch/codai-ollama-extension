@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, memo } from 'react';
 import { ChevronDown, Cloud, Cpu, Search } from 'lucide-react';
-import type { ModelDef } from '../../App';
+import type { ModelDef } from '../../types';
 
 interface ModelPickerProps {
     models: ModelDef[];

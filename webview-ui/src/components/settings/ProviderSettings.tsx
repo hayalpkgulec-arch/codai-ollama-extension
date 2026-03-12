@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { vscode } from '../../vscode';
 import { AutoApproveSettings } from './AutoApproveSettings';
-import type { AutoApproveConfig, ProviderSavedConfig } from '../../types';
+import type { AutoApproveConfig, ModelDef, ProviderModelsFetchState, ProviderSavedConfig } from '../../types';
 import {
     PROVIDERS as SHARED_PROVIDERS,
     type ProviderCapability,
@@ -56,14 +56,12 @@ interface ProviderSettingsProps {
     hasApiKey: boolean;
     currentBaseUrl: string;
     onClose: () => void;
-    onProviderModels: (
-        providerId: ProviderId,
-        models: Array<{ id: string; label: string }>,
-        isLocal: boolean
-    ) => void;
     onModelSelect: (modelId: string) => void;
     currentModel: string;
     savedProviderConfigs: Partial<Record<ProviderId, ProviderSavedConfig>>;
+    providerModelsById: Partial<Record<ProviderId, ModelDef[]>>;
+    providerModelFetchStateById: Partial<Record<ProviderId, ProviderModelsFetchState>>;
+    onProviderModelFetchStateChange: (providerId: ProviderId, fetchState: ProviderModelsFetchState) => void;
     onAutoApproveChange?: (cfg: AutoApproveConfig) => void;
 }
 
@@ -100,10 +98,12 @@ export const ProviderSettings = memo(({
     hasApiKey,
     currentBaseUrl,
     onClose,
-    onProviderModels,
     onModelSelect,
     currentModel,
     savedProviderConfigs,
+    providerModelsById,
+    providerModelFetchStateById,
+    onProviderModelFetchStateChange,
     onAutoApproveChange,
 }: ProviderSettingsProps) => {
     const [selectedId, setSelectedId] = useState<ProviderId>(currentProviderId);
@@ -114,12 +114,8 @@ export const ProviderSettings = memo(({
     const [showKey, setShowKey] = useState(false);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
-    const [fetchingModels, setFetchingModels] = useState(false);
-    const [models, setModels] = useState<Array<{ id: string; label: string }>>([]);
-    const [modelsError, setModelsError] = useState('');
     const [selectedModel, setSelectedModel] = useState(currentModel);
     const modelsRequestSeq = useRef(0);
-    const activeModelsRequestId = useRef<string | null>(null);
 
     const def = PROVIDERS.find((provider) => provider.id === selectedId)!;
     const currentDraft = providerDrafts[selectedId] ?? buildProviderDraft(selectedId, savedProviderConfigs[selectedId]);
@@ -136,6 +132,10 @@ export const ProviderSettings = memo(({
         || extraKeys.some((key) => key.trim().length > 0)
         || persistedHasKey;
     const configuredKeyCount = (apiKey.trim().length > 0 ? 1 : 0) + extraKeys.filter((key) => key.trim().length > 0).length;
+    const fetchState = providerModelFetchStateById[selectedId] || { loading: false, error: null, requestId: null };
+    const fetchingModels = fetchState.loading;
+    const modelsError = fetchState.error || '';
+    const models = providerModelsById[selectedId] || [];
     const credentialLabel = def.credentialLabel || 'API Key';
     const credentialPlaceholder = def.credentialPlaceholder || 'sk-...';
     const credentialActionLabel = def.credentialActionLabel || 'Get free key';
@@ -161,9 +161,12 @@ export const ProviderSettings = memo(({
 
     const requestModels = useCallback((providerId: ProviderId, keyOverride?: string, extraKeyOverrides?: string[], baseUrlOverride?: string) => {
         const requestId = `provider-models-${providerId}-${Date.now()}-${modelsRequestSeq.current++}`;
-        activeModelsRequestId.current = requestId;
-        setFetchingModels(true);
-        setModelsError('');
+        onProviderModelFetchStateChange(providerId, {
+            loading: true,
+            error: null,
+            requestId,
+            lastFetchedAt: Date.now(),
+        });
 
         const allKeys = [
             typeof keyOverride === 'string' ? keyOverride.trim() : apiKey.trim(),
@@ -178,7 +181,7 @@ export const ProviderSettings = memo(({
             apiKeys: allKeys.length > 1 ? allKeys : undefined,
             baseUrl: baseUrlOverride || baseUrl || PROVIDERS.find((provider) => provider.id === providerId)?.defaultBaseUrl,
         });
-    }, [apiKey, baseUrl, extraKeys]);
+    }, [apiKey, baseUrl, extraKeys, onProviderModelFetchStateChange]);
 
     useEffect(() => {
         const nextProvider = PROVIDERS.find((provider) => provider.id === selectedId);
@@ -192,20 +195,18 @@ export const ProviderSettings = memo(({
             }
         }
 
-        setModels([]);
-        setModelsError('');
-        setFetchingModels(false);
-        activeModelsRequestId.current = null;
-
         const persistedDraft = buildProviderDraft(selectedId, savedProviderConfigs[selectedId]);
         const persistedKeys = [persistedDraft.apiKey, ...persistedDraft.extraKeys].filter((key) => key.trim().length > 0);
         const canAutoFetch = !nextProvider?.requiresApiKey || persistedKeys.length > 0;
         let timer: ReturnType<typeof setTimeout> | undefined;
         if (canAutoFetch) {
             const requestId = `provider-models-${selectedId}-${Date.now()}-${modelsRequestSeq.current++}`;
-            activeModelsRequestId.current = requestId;
-            setFetchingModels(true);
-            setModelsError('');
+            onProviderModelFetchStateChange(selectedId, {
+                loading: true,
+                error: null,
+                requestId,
+                lastFetchedAt: Date.now(),
+            });
             timer = setTimeout(() => {
                 vscode.postMessage({
                     type: 'fetchProviderModels',
@@ -220,41 +221,10 @@ export const ProviderSettings = memo(({
         return () => {
             if (timer) clearTimeout(timer);
         };
-    }, [currentBaseUrl, currentProviderId, savedProviderConfigs, selectedId]);
+    }, [currentBaseUrl, currentProviderId, onProviderModelFetchStateChange, savedProviderConfigs, selectedId]);
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {
-            if (event.data.type === 'providerModels') {
-                if (event.data.requestId && activeModelsRequestId.current && event.data.requestId !== activeModelsRequestId.current) {
-                    return;
-                }
-
-                setFetchingModels(false);
-                activeModelsRequestId.current = null;
-
-                if (event.data.error) {
-                    setModelsError(event.data.error);
-                    return;
-                }
-
-                const incomingModels = event.data.models || [];
-                const availableModels = incomingModels.length > 0 ? incomingModels : def.defaultModels;
-
-                setModels(incomingModels);
-                setModelsError('');
-                onProviderModels(selectedId, incomingModels, def.isLocal);
-
-                if (
-                    availableModels.length > 0 &&
-                    !availableModels.some((model: { id: string; label: string }) => model.id === selectedModel)
-                ) {
-                    const fallbackModelId = availableModels[0].id;
-                    setSelectedModel(fallbackModelId);
-                    onModelSelect(fallbackModelId);
-                    vscode.postMessage({ type: 'changeModel', model: fallbackModelId });
-                }
-            }
-
             if (event.data.type === 'providerChanged') {
                 setSaving(false);
                 setSaved(true);
@@ -264,15 +234,38 @@ export const ProviderSettings = memo(({
 
         window.addEventListener('message', handler);
         return () => window.removeEventListener('message', handler);
-    }, [def.defaultModels, def.isLocal, onModelSelect, onProviderModels, selectedId, selectedModel]);
+    }, []);
+
+    useEffect(() => {
+        const availableModels = models.length > 0 ? models : def.defaultModels;
+        if (
+            availableModels.length > 0 &&
+            !availableModels.some((model: { id: string; label: string }) => model.id === selectedModel)
+        ) {
+            const fallbackModelId = availableModels[0].id;
+            setSelectedModel(fallbackModelId);
+            onModelSelect(fallbackModelId);
+            vscode.postMessage({ type: 'changeModel', model: fallbackModelId });
+        }
+    }, [def.defaultModels, models, onModelSelect, selectedModel]);
 
     const handleSave = useCallback(() => {
         if (def.requiresApiKey && !apiKey.trim() && !extraKeys.some((key) => key.trim().length > 0)) {
-            setModelsError(`Please enter a ${credentialLabel.toLowerCase()} before applying.`);
+            onProviderModelFetchStateChange(selectedId, {
+                loading: false,
+                error: `Please enter a ${credentialLabel.toLowerCase()} before applying.`,
+                requestId: null,
+                lastFetchedAt: Date.now(),
+            });
             return;
         }
 
-        setModelsError('');
+        onProviderModelFetchStateChange(selectedId, {
+            loading: false,
+            error: null,
+            requestId: null,
+            lastFetchedAt: Date.now(),
+        });
         setSaving(true);
 
         const allKeys = [apiKey.trim(), ...extraKeys.map((key) => key.trim())].filter(Boolean);
@@ -295,6 +288,7 @@ export const ProviderSettings = memo(({
         credentialLabel,
         def,
         extraKeys,
+        onProviderModelFetchStateChange,
         onModelSelect,
         selectedId,
         selectedModel,
@@ -302,12 +296,17 @@ export const ProviderSettings = memo(({
 
     const handleFetchModels = useCallback(() => {
         if (def.requiresApiKey && !apiKey.trim() && !extraKeys.some((key) => key.trim().length > 0)) {
-            setModelsError(`${credentialLabel} required. Enter it and click Apply first.`);
+            onProviderModelFetchStateChange(selectedId, {
+                loading: false,
+                error: `${credentialLabel} required. Enter it and click Apply first.`,
+                requestId: null,
+                lastFetchedAt: Date.now(),
+            });
             return;
         }
 
         requestModels(selectedId, apiKey, extraKeys, baseUrl || def.defaultBaseUrl);
-    }, [apiKey, baseUrl, credentialLabel, def, extraKeys, requestModels, selectedId]);
+    }, [apiKey, baseUrl, credentialLabel, def, extraKeys, onProviderModelFetchStateChange, requestModels, selectedId]);
 
     const handleModelPick = (id: string) => {
         setSelectedModel(id);

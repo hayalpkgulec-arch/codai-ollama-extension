@@ -16,27 +16,30 @@ import { ContextMenu } from './components/chat/ContextMenu';
 import { SlashCommandMenu, BUILTIN_SLASH_COMMANDS } from './components/chat/SlashCommandMenu';
 import { ContextInspector } from './components/chat/ContextInspector';
 import { TraceDrawer } from './components/chat/TraceDrawer';
+import { CodaiStoresProvider } from './store/CodaiStoresProvider';
 import type { SlashCommand } from './components/chat/SlashCommandMenu';
 import { ProviderSettings } from './components/settings/ProviderSettings';
 import { PROVIDERS, type ProviderId } from './catalog/providerCatalog';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
-import type { AutoApproveConfig } from './types';
+import type { AutoApproveConfig, ModelDef, ProviderModelsFetchState } from './types';
 import { ArrowUp, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare } from 'lucide-react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
 
 // ── Static fallback model list (cloud + local) ─────────────────────────────
-export type ModelDef = { id: string; label: string; tag: 'cloud' | 'local' };
 export type ProposalDecisions = Map<string, 'accepted' | 'rejected'>;
 const DEFAULT_PROVIDER_DEF = PROVIDERS.find((provider) => provider.id === 'ollama')!;
-const DEFAULT_MODEL: ModelDef = {
-  id: DEFAULT_PROVIDER_DEF.defaultModels[0]?.id || 'qwen2.5-coder:32b',
-  label: DEFAULT_PROVIDER_DEF.defaultModels[0]?.label || 'Qwen2.5 Coder 32B',
-  tag: DEFAULT_PROVIDER_DEF.isLocal ? 'local' : 'cloud',
-};
 
 export default function App() {
+  return (
+    <CodaiStoresProvider>
+      <AppShell />
+    </CodaiStoresProvider>
+  );
+}
+
+function AppShell() {
   const {
     messages, isProcessing, clearMessages, scrollTick,
     mode, setMode,
@@ -56,16 +59,18 @@ export default function App() {
     resumeNotice,
     contextCompactionNotice,
     isStreaming,
-    initialModel,
     iterationCount,
     activeFileContext, setActiveFileContext,
     ollamaModels,
     providerInfo,
+    model, setModel,
+    providerModelsById,
+    providerModelFetchStateById,
+    setProviderModelFetchState,
+    selectedMode,
   } = useVSCodeMessage();
 
   const [input, setInput] = useState('');
-  const [model, setModel] = useState<ModelDef>(DEFAULT_MODEL);
-  const [selectedMode, setSelectedMode] = useState<ModeDef>(MODES[0]);
   const [decisions, setDecisions] = useState<ProposalDecisions>(new Map());
   const [planClosed, setPlanClosed] = useState(false);
   // context dosyası popup
@@ -74,8 +79,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showContextInspector, setShowContextInspector] = useState(false);
   const [showTraceDrawer, setShowTraceDrawer] = useState(false);
-  // Provider'dan dinamik çekilen modeller
-  const [providerModelsById, setProviderModelsById] = useState<Partial<Record<ProviderId, ModelDef[]>>>({});
   // Plan timing — for elapsed display on PlanReadyCard
   const [planStartedAt] = useState<number>(() => Date.now());
   const [planReadyCardDismissed, setPlanReadyCardDismissed] = useState(false);
@@ -115,12 +118,6 @@ export default function App() {
 
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // BUG 8 FIX: Backend'den gelen model bilgisiyle state'i restore et
-  useEffect(() => {
-    if (!initialModel) return;
-    setModel({ id: initialModel, label: initialModel, tag: isProviderLocal ? 'local' : 'cloud' });
-  }, [initialModel, isProviderLocal]);
 
   // BUG 14 FIX: Ollama'dan dinamik model listesi — uygulama açılışında çek
   useEffect(() => {
@@ -204,11 +201,6 @@ export default function App() {
     }, 800);
     return () => clearTimeout(timer);
   }, [messages, activeSessionId, isProcessing]);
-
-  useEffect(() => {
-    const modeObj = MODES.find(m => m.id === mode);
-    if (modeObj) setSelectedMode(modeObj);
-  }, [mode]);
 
   // ── Pending write proposals ──────────────────────────────────────────────
   const pendingProposals = useMemo(() => {
@@ -329,7 +321,6 @@ export default function App() {
   };
 
   const handleModeChange = useCallback((m: ModeDef) => {
-    setSelectedMode(m);
     setMode(m.id);
     vscode.postMessage({ type: 'changeMode', mode: m.id });
   }, [setMode]);
@@ -463,7 +454,7 @@ export default function App() {
     const fallbackModel = currentProviderModels[0];
     setModel(fallbackModel);
     vscode.postMessage({ type: 'changeModel', model: fallbackModel.id });
-  }, [currentProviderModels, model.id]);
+  }, [currentProviderModels, model.id, setModel]);
 
   // ── Visible messages ──────────────────────────────────────────────────────
   const visible = messages.filter(m => {
@@ -493,19 +484,13 @@ export default function App() {
           currentBaseUrl={providerInfo.baseUrl}
           currentModel={model.id}
           savedProviderConfigs={providerInfo.configs}
+          providerModelsById={providerModelsById}
+          providerModelFetchStateById={providerModelFetchStateById}
+          onProviderModelFetchStateChange={(providerId, fetchState) => {
+            setProviderModelFetchState(providerId, fetchState as ProviderModelsFetchState);
+          }}
           onAutoApproveChange={setAutoApproveConfig}
           onClose={() => setShowSettings(false)}
-          onProviderModels={(providerId, models, isLocal) => {
-            const dynamicProviderModels = models.map(m => ({
-              id: m.id,
-              label: m.label,
-              tag: isLocal ? 'local' as const : 'cloud' as const,
-            }));
-            setProviderModelsById((previous) => ({
-              ...previous,
-              [providerId]: dynamicProviderModels,
-            }));
-          }}
           onModelSelect={(modelId) => {
             const found = currentProviderModels.find(m => m.id === modelId);
             if (found) setModel(found);

@@ -1237,6 +1237,64 @@ export const IterationBadge = memo(({ count }: { count: number }) => {
 });
 IterationBadge.displayName = 'IterationBadge';
 
+type AssistantRow =
+  | { kind: 'thinking'; key: string; segment: ThinkingSegment }
+  | { kind: 'content'; key: string; segment: ContentSegment; isLastContent: boolean }
+  | { kind: 'tool-group'; key: string; group: 'browser' | 'command' | 'checkpoint' | 'tool'; segments: Array<{ type: 'tool'; tool: ToolCall }> };
+
+function getToolRowGroup(tool: ToolCall): 'browser' | 'command' | 'checkpoint' | 'tool' {
+  if (tool.name.startsWith('browser_')) return 'browser';
+  if (['run_command', 'bash', 'shell', 'execute_command'].includes(tool.name)) return 'command';
+  if (
+    ['write_file', 'create_file', 'edit_file', 'write_to_file', 'write_multiple_files', 'delete_multiple_files'].includes(tool.name)
+    || tool.result?.includes('"checkpoints"')
+  ) {
+    return 'checkpoint';
+  }
+  return 'tool';
+}
+
+function buildAssistantRows(msg: ChatMessage): AssistantRow[] {
+  const rows: AssistantRow[] = [];
+
+  for (let index = 0; index < msg.segments.length; index += 1) {
+    const segment = msg.segments[index];
+    if (segment.type === 'thinking') {
+      rows.push({ kind: 'thinking', key: `thinking-${index}`, segment });
+      continue;
+    }
+    if (segment.type === 'content') {
+      const remainingSegments = msg.segments.slice(index + 1);
+      const isLastContent = !remainingSegments.some((candidate) => candidate.type === 'content');
+      rows.push({ kind: 'content', key: `content-${index}`, segment, isLastContent });
+      continue;
+    }
+
+    const group = getToolRowGroup(segment.tool);
+    const lastRow = rows[rows.length - 1];
+    if (lastRow?.kind === 'tool-group' && lastRow.group === group) {
+      lastRow.segments.push(segment);
+      continue;
+    }
+
+    rows.push({
+      kind: 'tool-group',
+      key: `tool-group-${group}-${index}`,
+      group,
+      segments: [segment],
+    });
+  }
+
+  return rows;
+}
+
+function runtimeRowLabel(group: 'browser' | 'command' | 'checkpoint' | 'tool'): string {
+  if (group === 'browser') return 'Browser';
+  if (group === 'command') return 'Command output';
+  if (group === 'checkpoint') return 'Checkpointed changes';
+  return 'Tool activity';
+}
+
 // ─── AssistantMessage ────────────────────────────────────────────────────────
 export interface AssistantMessageProps {
   msg: ChatMessage;
@@ -1253,34 +1311,41 @@ export const AssistantMessage = memo(({ msg, decisions, onDecide, onRetry, onQuo
   // - Sadece son content (finalResponse) ve thinking gösterilir
   const hasTools = msg.segments.some(s => s.type === 'tool');
   const hasRunningTools = msg.segments.some(s => s.type === 'tool' && s.tool.status === 'running');
+  const rows = useMemo(() => buildAssistantRows(msg), [msg]);
 
   return (
     <div className="asst-body">
-      {msg.segments.map((seg, i) => {
-        if (seg.type === 'thinking') {
-          return <ThinkingBlock key={i} seg={seg} />;
+      {rows.map((row) => {
+        if (row.kind === 'thinking') {
+          return <ThinkingBlock key={row.key} seg={row.segment} />;
         }
-        if (seg.type === 'content') {
+        if (row.kind === 'content') {
           // Tool'lar varken ara content segmentlerini gizle — sadece son content'i göster
           if (hasTools) {
             // Son content segmenti mi? (sonraki segment yok veya sonraki de content)
-            const nextSeg = msg.segments[i + 1];
-            const isLastContent = !nextSeg || nextSeg.type !== 'tool';
+            const isLastContent = row.isLastContent;
             // Running tool varsa hiçbir content gösterme
             if (hasRunningTools) return null;
             // Running tool yoksa sadece son content'i göster
             if (!isLastContent) return null;
           }
-          return <ContentBlock key={i} seg={seg} isLast={i === msg.segments.length - 1} />;
+          return <ContentBlock key={row.key} seg={row.segment} isLast={row.isLastContent} />;
         }
-        if (seg.type === 'tool') {
+        if (row.kind === 'tool-group') {
           return (
-            <ToolCard
-              key={`${seg.tool.phaseId}-${i}`}
-              tool={seg.tool}
-              decision={decisions.get(seg.tool.phaseId)}
-              onDecide={onDecide}
-            />
+            <div key={row.key} className={`runtime-row runtime-row--${row.group}`}>
+              <div className="runtime-row-label">{runtimeRowLabel(row.group)}</div>
+              <div className="runtime-row-body">
+                {row.segments.map((segment, index) => (
+                  <ToolCard
+                    key={`${segment.tool.phaseId}-${index}`}
+                    tool={segment.tool}
+                    decision={decisions.get(segment.tool.phaseId)}
+                    onDecide={onDecide}
+                  />
+                ))}
+              </div>
+            </div>
           );
         }
         return null;

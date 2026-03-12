@@ -19,11 +19,11 @@
 
 ## v0.0.52 UI And State Refactor
 
-- [ ] Replace the `useVSCodeMessage` monolith with `ExtensionStore` and `ChatRuntimeStore`
-- [ ] Move provider, model, auth, and fetch state into a shared reducer
-- [ ] Switch chat rendering to event-grouped runtime rows for tools, browser actions, checkpoints, and command output
-- [ ] Expand the trace drawer with runtime warnings, blocked reasons, recovery hints, and latest artifacts
-- [ ] Add a context inspector that shows prompt layers and token budget usage
+- [x] Replace the `useVSCodeMessage` monolith with `ExtensionStore` and `ChatRuntimeStore`
+- [x] Move provider, model, auth, and fetch state into a shared reducer
+- [x] Switch chat rendering to event-grouped runtime rows for tools, browser actions, checkpoints, and command output
+- [x] Expand the trace drawer with runtime warnings, blocked reasons, recovery hints, and latest artifacts
+- [x] Add a context inspector that shows prompt layers and token budget usage
 
 ## v0.0.53 Goal Control And Extensibility
 
@@ -53,3 +53,4 @@
 - 2026-03-13: Completed the backend half of `v0.0.50` by hardening `web_fetch` with citation, redirect, robots, trust, cache, and throttling metadata, and by collapsing duplicate/over-concentrated `web_search` results before they reach the model.
 - 2026-03-13: Completed the UI and test half of `v0.0.50` by adding dedicated `web_search` cards, richer `web_fetch` cards, and fixture-backed coverage for malformed pages, redirects, empty shells, timeouts, and binary responses.
 - 2026-03-13: Completed `v0.0.51` by adding a local-first browser session service, first-party browser tools, workspace-backed screenshot and console artifacts, runtime/browser trace state, and crash-recovery tests for browser cleanup flows.
+- 2026-03-13: Completed `v0.0.52` by splitting webview state into `ExtensionStore` and `ChatRuntimeStore`, moving provider/model fetch state into shared reducers, grouping runtime rows in chat, and expanding the trace/context drawers with richer runtime inspection details.

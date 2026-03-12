@@ -1,3 +1,4 @@
+import { vscode } from '../../vscode';
 import type { BrowserSessionState, LatestTraceSummary, ToolControlState, TurnState } from '../../types';
 
 interface PreflightNotice {
@@ -35,6 +36,11 @@ export function TraceDrawer({
   onOpenTrace,
 }: TraceDrawerProps) {
   if (!open) return null;
+
+  const latestBlockedAlert = toolControlState?.alerts
+    .filter((alert) => alert.code.toLowerCase().includes('block'))
+    .slice(-1)[0] || null;
+  const recoveryHint = latestBlockedAlert?.suggestedAction || toolControlState?.recommendedAction || null;
 
   return (
     <aside className="side-drawer side-drawer--trace" aria-label="Debug trace drawer">
@@ -151,6 +157,18 @@ export function TraceDrawer({
               <span>Failure streak</span>
               <strong>{toolControlState.consecutiveFailures}</strong>
             </div>
+            {latestBlockedAlert && (
+              <div className="side-drawer-meta-row">
+                <span>Last blocked</span>
+                <strong>{latestBlockedAlert.message}</strong>
+              </div>
+            )}
+            {recoveryHint && (
+              <div className="side-drawer-meta-row">
+                <span>Recovery hint</span>
+                <strong>{recoveryHint}</strong>
+              </div>
+            )}
             {toolControlState.alerts.length > 0 && (
               <div className="side-drawer-stack">
                 {toolControlState.alerts.slice(-3).reverse().map((alert) => (
@@ -168,6 +186,25 @@ export function TraceDrawer({
                   </span>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {(browserSessionState?.lastArtifactPath || latestTrace?.traceFilePath) && (
+          <div className="side-drawer-card">
+            <div className="side-drawer-card-title">Latest artifacts</div>
+            {browserSessionState?.lastArtifactPath && (
+              <button
+                className="side-drawer-action side-drawer-action--block"
+                onClick={() => vscode.postMessage({ type: 'openFile', path: browserSessionState.lastArtifactPath })}
+              >
+                Open browser artifact
+              </button>
+            )}
+            {latestTrace?.traceFilePath && (
+              <button className="side-drawer-action side-drawer-action--block" onClick={onOpenTrace}>
+                Open latest trace
+              </button>
             )}
           </div>
         )}

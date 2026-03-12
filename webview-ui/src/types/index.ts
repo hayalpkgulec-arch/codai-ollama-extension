@@ -154,6 +154,19 @@ export interface BrowserSessionState {
   consoleMessageCount?: number;
 }
 
+export interface ModelDef {
+  id: string;
+  label: string;
+  tag: 'cloud' | 'local';
+}
+
+export interface ProviderModelsFetchState {
+  loading: boolean;
+  error: string | null;
+  requestId: string | null;
+  lastFetchedAt?: number;
+}
+
 // ── Auto-approve config ───────────────────────────────────────────────────────
 export interface AutoApproveConfig {
   read_file: boolean;

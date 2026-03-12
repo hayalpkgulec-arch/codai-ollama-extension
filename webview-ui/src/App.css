@@ -5602,6 +5602,11 @@ button:focus-visible {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.side-drawer-action--block {
+  width: 100%;
+  justify-content: center;
+}
+
 .side-drawer-stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -5731,6 +5736,40 @@ button:focus-visible {
 .side-drawer-notice--warning {
   border-color: rgba(213, 153, 45, 0.26);
   background: rgba(213, 153, 45, 0.08);
+}
+
+.runtime-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.runtime-row-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.46);
+  padding-left: 2px;
+}
+
+.runtime-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.runtime-row--browser .runtime-row-label {
+  color: rgba(116, 190, 255, 0.82);
+}
+
+.runtime-row--command .runtime-row-label {
+  color: rgba(255, 215, 120, 0.82);
+}
+
+.runtime-row--checkpoint .runtime-row-label {
+  color: rgba(132, 234, 184, 0.82);
 }
 
 @media (max-width: 900px) {

@@ -10,6 +10,14 @@ interface ContextInspectorProps {
 export function ContextInspector({ open, preview, tokenCount, onClose }: ContextInspectorProps) {
   if (!open) return null;
 
+  const layerSummary = preview?.artifacts?.reduce<Record<string, { count: number; tokens: number }>>((acc, artifact) => {
+    const entry = acc[artifact.kind] || { count: 0, tokens: 0 };
+    entry.count += 1;
+    entry.tokens += artifact.tokenEstimate;
+    acc[artifact.kind] = entry;
+    return acc;
+  }, {}) || {};
+
   return (
     <aside className="side-drawer side-drawer--context" aria-label="Context inspector">
       <div className="side-drawer-header">
@@ -36,8 +44,34 @@ export function ContextInspector({ open, preview, tokenCount, onClose }: Context
             <span>Left</span>
             <strong>{tokenCount.tokensLeft.toLocaleString()}</strong>
           </div>
+          <div className="side-drawer-stat">
+            <span>Max</span>
+            <strong>{tokenCount.maxContextTokens.toLocaleString()}</strong>
+          </div>
         </div>
       )}
+
+      <div className="side-drawer-section">
+        <div className="side-drawer-section-title">Prompt Layers</div>
+        {Object.keys(layerSummary).length > 0 ? (
+          <div className="side-drawer-list">
+            {Object.entries(layerSummary).map(([kind, meta]) => (
+              <div key={kind} className="side-drawer-card">
+                <div className="side-drawer-card-head">
+                  <span className="side-drawer-chip">{kind}</span>
+                  <span className="side-drawer-card-tokens">{meta.tokens} tok</span>
+                </div>
+                <div className="side-drawer-card-title">{meta.count} layer{meta.count === 1 ? '' : 's'}</div>
+                <div className="side-drawer-card-body">
+                  This prompt layer currently contributes {meta.tokens} estimated tokens.
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="side-drawer-empty">Prompt layers will appear after the next context preview.</div>
+        )}
+      </div>
 
       <div className="side-drawer-section">
         <div className="side-drawer-section-title">Artifacts</div>
@@ -78,6 +112,24 @@ export function ContextInspector({ open, preview, tokenCount, onClose }: Context
           <div className="side-drawer-empty">No retrieved context was needed for the latest turn.</div>
         )}
       </div>
+
+      {(preview?.compactionSnapshotCount || preview?.workspaceMemoryCount) && (
+        <div className="side-drawer-section">
+          <div className="side-drawer-section-title">Context Engine</div>
+          <div className="side-drawer-list">
+            <div className="side-drawer-card">
+              <div className="side-drawer-meta-row">
+                <span>Compaction snapshots</span>
+                <strong>{preview?.compactionSnapshotCount ?? 0}</strong>
+              </div>
+              <div className="side-drawer-meta-row">
+                <span>Workspace memories</span>
+                <strong>{preview?.workspaceMemoryCount ?? 0}</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }
