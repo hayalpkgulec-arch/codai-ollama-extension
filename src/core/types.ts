@@ -1,5 +1,39 @@
 export type AgentMode = 'code' | 'plan' | 'chat';
 export type WriteFileMode = 'creating' | 'editing';
+export type ToolRiskLevel = 'low' | 'medium' | 'high';
+export type ToolSideEffectScope = 'none' | 'filesystem' | 'process' | 'network' | 'workspace' | 'user';
+
+export interface ToolManifest {
+    name: string;
+    category: 'read' | 'write' | 'run' | 'web' | 'plan' | 'user';
+    riskLevel: ToolRiskLevel;
+    requiresApproval: boolean;
+    supportsAutoApprove: boolean;
+    producesCheckpoint: boolean;
+    idempotent: boolean;
+    sideEffectScope: ToolSideEffectScope;
+    commandProfile?: 'safe' | 'interactive' | 'background' | 'destructive';
+}
+
+export interface ToolArtifact {
+    kind: 'url' | 'file' | 'command' | 'host' | 'note';
+    label: string;
+    value: string;
+}
+
+export interface ToolExecutionResult {
+    toolName: string;
+    status: 'success' | 'error';
+    summary: string;
+    rawResult: string;
+    startedAt: number;
+    finishedAt: number;
+    durationMs: number;
+    manifest?: ToolManifest;
+    artifacts?: ToolArtifact[];
+    errorMessage?: string;
+    checkpointRefs?: string[];
+}
 
 export interface WriteFileDiffEntry {
     type: 'add' | 'remove' | 'context';
@@ -28,6 +62,7 @@ export interface ToolCallMessage {
 export interface Tool {
     name: string;
     description: string;
+    manifest?: ToolManifest;
     parameters: {
         type: string;
         properties: Record<string, any>;

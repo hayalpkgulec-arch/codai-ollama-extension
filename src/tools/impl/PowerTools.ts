@@ -1,18 +1,18 @@
 import { BaseTool } from '../core/BaseTool';
 import { Tool } from '../../core/types';
-import * as https from 'https';
-import * as http from 'http';
-import * as url from 'url';
 import * as path from 'path';
 import { promises as fs } from 'fs';
+import { WebFetchService } from '../../services/WebFetchService';
 
 // ── web_fetch ────────────────────────────────────────────────────────────────
 // Fetches content from a URL. Useful for documentation, APIs, etc.
 export class WebFetchTool extends BaseTool {
+    private readonly webFetchService = new WebFetchService();
+
     get definition(): Tool {
         return {
             name: 'web_fetch',
-            description: 'Fetch content from a URL (documentation, APIs, web pages). Returns the response body as text. Supports HTTP and HTTPS.',
+            description: 'Fetch content from a URL with retries, cleanup, link extraction, and structured metadata. Supports HTTP and HTTPS.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -23,6 +23,14 @@ export class WebFetchTool extends BaseTool {
                     maxChars: {
                         type: 'number',
                         description: 'Maximum characters to return (default: 8000)'
+                    },
+                    timeoutMs: {
+                        type: 'number',
+                        description: 'Request timeout in milliseconds (default: 15000)'
+                    },
+                    preferCache: {
+                        type: 'boolean',
+                        description: 'Reuse a recent cached fetch when available (default: true)'
                     }
                 },
                 required: ['url']
@@ -30,46 +38,8 @@ export class WebFetchTool extends BaseTool {
         };
     }
 
-    async execute(args: { url: string; maxChars?: number }): Promise<string> {
-        const targetUrl = args.url?.trim();
-        const maxChars = args.maxChars ?? 8000;
-
-        if (!targetUrl) return 'Error: No URL provided';
-        if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-            return 'Error: Only http:// and https:// URLs are supported';
-        }
-
-        return new Promise<string>((resolve) => {
-            const parsed = url.parse(targetUrl);
-            const lib = parsed.protocol === 'https:' ? https : http;
-            const startedAt = Date.now();
-
-            const req = lib.get(targetUrl, { headers: { 'User-Agent': 'CodAI/1.0' } }, (res) => {
-                const chunks: Buffer[] = [];
-                res.on('data', (chunk: Buffer) => chunks.push(chunk));
-                res.on('end', () => {
-                    let body = Buffer.concat(chunks).toString('utf-8');
-                    // Strip HTML tags for cleaner content
-                    body = body
-                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-                        .replace(/<[^>]+>/g, ' ')
-                        .replace(/\s{2,}/g, ' ')
-                        .trim();
-                    if (body.length > maxChars) {
-                        body = body.slice(0, maxChars) + '\n... [truncated]';
-                    }
-                    const ms = Date.now() - startedAt;
-                    resolve(`Fetched ${targetUrl} (${ms}ms, ${res.statusCode}):\n\n${body}`);
-                });
-            });
-
-            req.setTimeout(15000, () => {
-                req.destroy();
-                resolve(`Error: Request to ${targetUrl} timed out after 15s`);
-            });
-            req.on('error', (err: Error) => resolve(`Error fetching URL: ${err.message}`));
-        });
+    async execute(args: { url: string; maxChars?: number; timeoutMs?: number; preferCache?: boolean }): Promise<string> {
+        return this.webFetchService.fetch(args);
     }
 }
 

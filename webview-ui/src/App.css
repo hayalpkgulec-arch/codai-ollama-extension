@@ -5961,3 +5961,125 @@ button:focus-visible {
 .thinking-indicator {
   display: none;
 }
+
+.side-drawer-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.web-fetch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.web-fetch-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.web-fetch-card__title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.web-fetch-card__title {
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #d4d4d4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-fetch-card__open {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+}
+
+.web-fetch-card__open:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.web-fetch-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.web-fetch-card__excerpt {
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.76);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.web-fetch-card__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.web-fetch-card__link {
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11.5px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.web-fetch-card__link:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.web-fetch-card__link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.web-fetch-card__alert {
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.web-fetch-card__alert--warning {
+  border: 1px solid rgba(242, 201, 76, 0.24);
+  background: rgba(242, 201, 76, 0.08);
+  color: rgba(255, 225, 139, 0.92);
+}
+
+.web-fetch-card__alert--error {
+  border: 1px solid rgba(255, 122, 102, 0.24);
+  background: rgba(255, 122, 102, 0.08);
+  color: rgba(255, 163, 151, 0.94);
+}

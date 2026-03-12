@@ -1,4 +1,4 @@
-import type { LatestTraceSummary, TurnState } from '../../types';
+import type { LatestTraceSummary, ToolControlState, TurnState } from '../../types';
 
 interface PreflightNotice {
   severity: 'warning' | 'error';
@@ -10,6 +10,7 @@ interface TraceDrawerProps {
   open: boolean;
   latestTrace: LatestTraceSummary | null;
   turnState: TurnState | null;
+  toolControlState: ToolControlState | null;
   preflightNotice: PreflightNotice | null;
   resumeNotice: string | null;
   onClose: () => void;
@@ -25,6 +26,7 @@ export function TraceDrawer({
   open,
   latestTrace,
   turnState,
+  toolControlState,
   preflightNotice,
   resumeNotice,
   onClose,
@@ -123,6 +125,50 @@ export function TraceDrawer({
             <strong>{turnState?.budgetState?.compactedMessageCount ?? 0}</strong>
           </div>
         </div>
+
+        {toolControlState && (
+          <div className="side-drawer-card">
+            <div className="side-drawer-card-title">Tool control</div>
+            <div className="side-drawer-meta-row">
+              <span>Focus</span>
+              <strong>{toolControlState.focus}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Recommended</span>
+              <strong>{toolControlState.recommendedAction}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Total calls</span>
+              <strong>{toolControlState.totalCalls}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Blocked</span>
+              <strong>{toolControlState.blockedCalls}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Failure streak</span>
+              <strong>{toolControlState.consecutiveFailures}</strong>
+            </div>
+            {toolControlState.alerts.length > 0 && (
+              <div className="side-drawer-stack">
+                {toolControlState.alerts.slice(-3).reverse().map((alert) => (
+                  <div key={alert.id} className={`side-drawer-notice side-drawer-notice--${alert.severity === 'error' ? 'error' : 'warning'}`}>
+                    {alert.message}
+                  </div>
+                ))}
+              </div>
+            )}
+            {toolControlState.recentActions.length > 0 && (
+              <div className="side-drawer-tags">
+                {toolControlState.recentActions.slice(-4).reverse().map((action, index) => (
+                  <span key={`${action.toolName}-${action.at}-${index}`} className="side-drawer-tag">
+                    {action.toolName}: {action.status}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {(turnState?.error || latestTrace?.error) && (
           <div className="side-drawer-card side-drawer-card--error">

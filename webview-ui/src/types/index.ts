@@ -101,6 +101,47 @@ export interface ProviderCapability {
   defaultModels: Array<{ id: string; label: string; tag: 'cloud' | 'local' }>;
 }
 
+export interface ToolManifest {
+  name: string;
+  category: 'read' | 'write' | 'run' | 'web' | 'plan' | 'user';
+  riskLevel: 'low' | 'medium' | 'high';
+  requiresApproval: boolean;
+  supportsAutoApprove: boolean;
+  producesCheckpoint: boolean;
+  idempotent: boolean;
+  sideEffectScope: 'none' | 'filesystem' | 'process' | 'network' | 'workspace' | 'user';
+  commandProfile?: 'safe' | 'interactive' | 'background' | 'destructive';
+}
+
+export interface ToolControlAlert {
+  id: string;
+  severity: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  toolName?: string;
+  suggestedAction?: string;
+  createdAt: number;
+}
+
+export interface ToolControlState {
+  turnId: string;
+  totalCalls: number;
+  blockedCalls: number;
+  consecutiveFailures: number;
+  perToolCounts: Record<string, number>;
+  webFetchHostCounts: Record<string, number>;
+  repeatedCallCounts: Record<string, number>;
+  recentActions: Array<{
+    toolName: string;
+    summary: string;
+    status: 'success' | 'error' | 'blocked';
+    at: number;
+  }>;
+  alerts: ToolControlAlert[];
+  focus: string;
+  recommendedAction: string;
+}
+
 // ── Auto-approve config ───────────────────────────────────────────────────────
 export interface AutoApproveConfig {
   read_file: boolean;
@@ -162,6 +203,8 @@ export interface ToolCall {
   args?: any;          // raw args from toolActivityStart (for live preview)
   startedAt?: number;
   finishedAt?: number;
+  manifest?: ToolManifest;
+  controlState?: ToolControlState | null;
 }
 
 // ── Ordered timeline segments within a message ────────────────────────────

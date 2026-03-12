@@ -49,6 +49,8 @@ export default function App() {
     contextPreview,
     latestTrace,
     turnState,
+    toolControlState,
+    toolControlNotice,
     preflightNotice,
     resumeNotice,
     contextCompactionNotice,
@@ -596,10 +598,10 @@ export default function App() {
         />
       )}
 
-      {(resumeNotice || preflightNotice) && (
-        <div className={`runtime-banner${preflightNotice?.severity === 'error' ? ' runtime-banner--error' : ''}`}>
+      {(resumeNotice || preflightNotice || toolControlNotice) && (
+        <div className={`runtime-banner${preflightNotice?.severity === 'error' || toolControlNotice?.severity === 'error' ? ' runtime-banner--error' : ''}`}>
           <span>
-            {resumeNotice || [...(preflightNotice?.errors || []), ...(preflightNotice?.warnings || [])].join(' ')}
+            {resumeNotice || toolControlNotice?.message || [...(preflightNotice?.errors || []), ...(preflightNotice?.warnings || [])].join(' ')}
           </span>
           <div className="runtime-banner-actions">
             {latestTrace?.traceFilePath && (
@@ -842,6 +844,7 @@ export default function App() {
         open={showTraceDrawer}
         latestTrace={latestTrace}
         turnState={turnState}
+        toolControlState={toolControlState}
         preflightNotice={preflightNotice}
         resumeNotice={resumeNotice}
         onClose={() => setShowTraceDrawer(false)}

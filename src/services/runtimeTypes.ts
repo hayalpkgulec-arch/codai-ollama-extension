@@ -1,4 +1,5 @@
 import type { ProviderId } from './providerCatalog';
+import type { ToolManifest } from '../core/types';
 
 export interface ContextWindowStats {
     contextTokens: number;
@@ -119,4 +120,45 @@ export interface ProviderPreflightResult {
     warnings: string[];
     errors: string[];
     supportsTools: boolean;
+}
+
+export interface ToolControlAlert {
+    id: string;
+    severity: 'info' | 'warning' | 'error';
+    code: string;
+    message: string;
+    toolName?: string;
+    suggestedAction?: string;
+    createdAt: number;
+}
+
+export interface ToolControlState {
+    turnId: string;
+    totalCalls: number;
+    blockedCalls: number;
+    consecutiveFailures: number;
+    perToolCounts: Record<string, number>;
+    webFetchHostCounts: Record<string, number>;
+    repeatedCallCounts: Record<string, number>;
+    recentActions: Array<{
+        toolName: string;
+        summary: string;
+        status: 'success' | 'error' | 'blocked';
+        at: number;
+    }>;
+    alerts: ToolControlAlert[];
+    focus: string;
+    recommendedAction: string;
+}
+
+export interface ToolControlDecision {
+    allowed: boolean;
+    stopTurn: boolean;
+    alerts: ToolControlAlert[];
+    reason?: string;
+}
+
+export interface ToolCatalogEntry {
+    manifest: ToolManifest;
+    description: string;
 }

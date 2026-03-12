@@ -12,7 +12,9 @@ import { CheckpointManager } from '../integrations/checkpoints/CheckpointManager
 import { WorkspaceStorage } from '../services/WorkspaceStorage';
 import { ProviderPreflight } from '../services/ProviderPreflight';
 import { TurnTraceService } from '../services/TurnTraceService';
-import type { TurnPhase } from '../services/runtimeTypes';
+import { ToolControlService } from '../services/ToolControlService';
+import type { ToolArtifact, ToolExecutionResult, ToolManifest } from './types';
+import type { ToolCatalogEntry, ToolControlState, TurnPhase } from '../services/runtimeTypes';
 
 export class TaskController {
     private _view?: vscode.Webview;
@@ -25,6 +27,8 @@ export class TaskController {
     private turnSequenceByRequestId = new Map<string, number>();
     private pendingWriteProposals = new Map<string, any>();
     private activeAbortController?: AbortController;
+    private lastToolControlState: ToolControlState | null = null;
+    private toolCatalogCache: ToolCatalogEntry[] | null = null;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -65,7 +69,10 @@ export class TaskController {
 
     // Expose WorkspaceManager methods for the WebviewMessageHandler
     public getSettings() { return this.workspaceManager.getSettings(); }
-    public clearHistory() { this.workspaceManager.clearHistory(); }
+    public clearHistory() {
+        this.workspaceManager.clearHistory();
+        this.lastToolControlState = null;
+    }
     public changeModel(model: string) { this.workspaceManager.changeModel(model); this.rebuildLLMService(); }
     public changeMode(mode: string) { this.workspaceManager.setMode(mode as any); }
     public getMode() { return this.workspaceManager.getMode(); }
@@ -336,6 +343,8 @@ export class TaskController {
             contextPreview: this.workspaceManager.getContextPreview(),
             latestTrace,
             turnState: currentTurnState,
+            toolControlState: this.lastToolControlState,
+            toolCatalog: this.getToolCatalog(),
             providerCapabilities: listProviderCapabilities(),
             // Provider state — frontend settings panelini restore eder
             provider: {
@@ -433,6 +442,31 @@ export class TaskController {
         const state = this.traceService.getCurrentTurnState();
         if (!state || state.turnId !== turnId) return;
         this.emitTurnEvent(turnId, 'turnState', state);
+    }
+
+    private getToolCatalog(): ToolCatalogEntry[] {
+        if (!this.toolCatalogCache) {
+            this.toolCatalogCache = globalToolRegistry.getToolCatalog();
+        }
+        return this.toolCatalogCache;
+    }
+
+    private emitToolControlState(turnId: string, state: ToolControlState | null) {
+        this.lastToolControlState = state ? {
+            ...state,
+            perToolCounts: { ...state.perToolCounts },
+            webFetchHostCounts: { ...state.webFetchHostCounts },
+            repeatedCallCounts: { ...state.repeatedCallCounts },
+            recentActions: [...state.recentActions],
+            alerts: [...state.alerts],
+        } : null;
+        if (state) {
+            this.emitTurnEvent(turnId, 'toolControlState', this.lastToolControlState);
+        }
+    }
+
+    private emitToolControlNotice(turnId: string, message: string, severity: 'info' | 'warning' | 'error' = 'warning') {
+        this.emitTurnEvent(turnId, 'toolControlNotice', { message, severity });
     }
 
     // Utility methods for tool processing
@@ -782,6 +816,24 @@ export class TaskController {
                         checkpoints: Array.isArray(p.checkpoints) ? p.checkpoints : [],
                     });
                 }
+                if (p.__tool === 'web_fetch') {
+                    return JSON.stringify({
+                        __tool: 'web_fetch',
+                        status: p.status,
+                        summary: p.summary,
+                        url: p.url,
+                        finalUrl: p.finalUrl,
+                        host: p.host,
+                        statusCode: p.statusCode,
+                        contentType: p.contentType,
+                        title: p.title,
+                        excerpt: p.excerpt,
+                        links: Array.isArray(p.links) ? p.links.slice(0, 6) : [],
+                        cached: Boolean(p.cached),
+                        durationMs: typeof p.durationMs === 'number' ? p.durationMs : undefined,
+                        errorMessage: p.errorMessage,
+                    });
+                }
             } catch { /* fallthrough */ }
         }
 
@@ -792,9 +844,26 @@ export class TaskController {
         return rawResult;
     }
 
-    private normalizeToolResult(rawResult: string, toolName: string, summary: string, startedAt: number) {
+    private normalizeToolResult(
+        rawResult: string,
+        toolName: string,
+        summary: string,
+        startedAt: number,
+        manifest?: ToolManifest,
+        controlState?: ToolControlState | null,
+    ) {
         const finishedAt = Date.now();
-        const base = { toolName, status: 'success' as 'success' | 'error', summary, rawResult, startedAt, finishedAt };
+        const base = {
+            toolName,
+            status: 'success',
+            summary,
+            rawResult,
+            startedAt,
+            finishedAt,
+            durationMs: finishedAt - startedAt,
+            manifest,
+            artifacts: this.buildToolArtifacts(toolName, rawResult),
+        };
         if (typeof rawResult === 'string' && rawResult.trim().startsWith('{')) {
             try {
                 const parsed = JSON.parse(rawResult);
@@ -818,23 +887,63 @@ export class TaskController {
                         truncated: Boolean(parsed.truncated),
                         durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : (finishedAt - startedAt),
                         rawResult,
+                        manifest,
+                        artifacts: this.buildToolArtifacts(toolName, rawResult),
                     };
                 }
                 if (parsed && parsed.__tool === 'write_file') {
-                    return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, mode: parsed.mode === 'editing' ? 'editing' : 'creating', path: parsed.path || '', fileName: parsed.fileName || '', preview: parsed.preview || '', hunks: Array.isArray(parsed.hunks) ? parsed.hunks : [], addedCount: typeof parsed.addedCount === 'number' ? parsed.addedCount : 0, removedCount: typeof parsed.removedCount === 'number' ? parsed.removedCount : 0, errorMessage: parsed.errorMessage || '', durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : (finishedAt - startedAt), truncated: Boolean(parsed.truncated) };
+                    return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, mode: parsed.mode === 'editing' ? 'editing' : 'creating', path: parsed.path || '', fileName: parsed.fileName || '', preview: parsed.preview || '', hunks: Array.isArray(parsed.hunks) ? parsed.hunks : [], addedCount: typeof parsed.addedCount === 'number' ? parsed.addedCount : 0, removedCount: typeof parsed.removedCount === 'number' ? parsed.removedCount : 0, errorMessage: parsed.errorMessage || '', durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : (finishedAt - startedAt), truncated: Boolean(parsed.truncated), checkpointRefs: Array.isArray(parsed.checkpoints) ? parsed.checkpoints.map((checkpoint: any) => checkpoint?.id).filter(Boolean) : undefined };
                 }
                 if (parsed && parsed.__tool === 'write_multiple_files') {
-                    return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, successCount: parsed.successCount || 0, errorCount: parsed.errorCount || 0, results: Array.isArray(parsed.results) ? parsed.results : [], durationMs: finishedAt - startedAt };
+                    return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, successCount: parsed.successCount || 0, errorCount: parsed.errorCount || 0, results: Array.isArray(parsed.results) ? parsed.results : [], durationMs: finishedAt - startedAt, checkpointRefs: Array.isArray(parsed.checkpoints) ? parsed.checkpoints.map((checkpoint: any) => checkpoint?.id).filter(Boolean) : undefined };
                 }
                 if (parsed && parsed.__tool === 'delete_multiple_files') {
                     return { ...base, status: parsed.status === 'error' ? 'error' : 'success', summary: parsed.summary || summary, successCount: parsed.successCount || 0, errorCount: parsed.errorCount || 0, results: Array.isArray(parsed.results) ? parsed.results : [], durationMs: finishedAt - startedAt };
                 }
+                if (parsed && parsed.__tool === 'web_fetch') {
+                    const fetchStatus = parsed.status === 'error' ? 'error' : 'success';
+                    return {
+                        ...base,
+                        status: fetchStatus,
+                        summary: parsed.summary || summary,
+                        durationMs: typeof parsed.durationMs === 'number' ? parsed.durationMs : finishedAt - startedAt,
+                        errorMessage: parsed.errorMessage || '',
+                        artifacts: this.buildToolArtifacts(toolName, rawResult),
+                    };
+                }
             } catch { /* keep base format */ }
         }
         if (rawResult.startsWith('Error:') || rawResult.startsWith('Unknown tool:')) {
-            return { ...base, status: 'error' as const, summary: `${summary} failed` };
+            return {
+                ...base,
+                status: 'error',
+                summary: `${summary} failed`,
+                errorMessage: rawResult,
+            };
         }
         return base;
+    }
+
+    private buildToolArtifacts(toolName: string, rawResult: string): ToolArtifact[] {
+        const artifacts: ToolArtifact[] = [];
+        if (toolName === 'web_fetch' && typeof rawResult === 'string' && rawResult.trim().startsWith('{')) {
+            try {
+                const parsed = JSON.parse(rawResult);
+                if (typeof parsed.finalUrl === 'string' && parsed.finalUrl) {
+                    artifacts.push({ kind: 'url', label: 'Final URL', value: parsed.finalUrl });
+                }
+                if (typeof parsed.host === 'string' && parsed.host) {
+                    artifacts.push({ kind: 'host', label: 'Host', value: parsed.host });
+                }
+                if (typeof parsed.title === 'string' && parsed.title) {
+                    artifacts.push({ kind: 'note', label: 'Title', value: parsed.title });
+                }
+                return artifacts;
+            } catch {
+                return artifacts;
+            }
+        }
+        return artifacts;
     }
 
     public resolvePendingWriteProposal(proposalId: string, decision: 'approved' | 'rejected') {
@@ -957,6 +1066,8 @@ export class TaskController {
 
             this.workspaceManager.appendToHistory({ role: 'user', content: messageWithEnv });
             await this.workspaceManager.persistState();
+            const toolControl = new ToolControlService(turnRequestId);
+            this.emitToolControlState(turnRequestId, toolControl.getState());
 
             let continueLoop = true;
             const isPlanMode = this.workspaceManager.getMode() === 'plan';
@@ -1098,17 +1209,87 @@ export class TaskController {
                     for (const toolCall of toolCalls) {
                         const toolArgs = this.parseToolArguments(toolCall.function.arguments);
                         const toolName = toolCall.function.name;
+                        const manifest = globalToolRegistry.getToolManifest(toolName);
 
                         const startedAt = Date.now();
                         const summary = this.buildToolSummary(toolName, toolArgs);
                         const toolPhaseId = `tool-${toolCall.id || `${iteration}-${toolName}-${startedAt}-${Math.random().toString(36).slice(2, 6)}`}`;
 
                         const autoApproved = this.isAutoApproved(toolName);
+                        const controlDecision = toolControl.beforeToolExecution(
+                            toolName,
+                            toolArgs,
+                            manifest ?? {
+                                name: toolName,
+                                category: 'read',
+                                riskLevel: 'medium',
+                                requiresApproval: true,
+                                supportsAutoApprove: false,
+                                producesCheckpoint: false,
+                                idempotent: false,
+                                sideEffectScope: 'workspace',
+                            },
+                        );
+                        const controlStateBeforeExecution = toolControl.getState();
+                        this.emitToolControlState(turnRequestId, controlStateBeforeExecution);
+                        if (controlDecision.alerts.length > 0) {
+                            this.emitToolControlNotice(
+                                turnRequestId,
+                                controlDecision.alerts.map((alert) => alert.message).join(' '),
+                                controlDecision.alerts.some((alert) => alert.severity === 'error') ? 'error' : 'warning',
+                            );
+                        }
                         this.emitTurnEvent(turnRequestId, 'toolActivityStart', {
                             phaseId: toolPhaseId, toolName, args: toolArgs,
                             status: 'running', summary, startedAt, toolCallId: toolCall.id,
                             autoApproved,
+                            manifest,
+                            controlState: controlStateBeforeExecution,
                         });
+                        if (!controlDecision.allowed) {
+                            const blockedReason = controlDecision.reason || `${toolName} was blocked by tool controls.`;
+                            const blockedResult = JSON.stringify({
+                                __tool: 'tool_control',
+                                status: 'error',
+                                summary: `Blocked ${toolName}`,
+                                toolName,
+                                reason: blockedReason,
+                                alerts: controlDecision.alerts,
+                                recommendedAction: controlStateBeforeExecution.recommendedAction,
+                            });
+                            this.workspaceManager.appendToHistory({
+                                role: 'tool',
+                                content: blockedResult,
+                                tool_call_id: toolCall.id,
+                            });
+                            await this.workspaceManager.persistState();
+                            const blockedState = toolControl.afterToolExecution(toolName, toolArgs, 'blocked', blockedReason);
+                            this.emitToolControlState(turnRequestId, blockedState);
+                            this.emitTurnEvent(turnRequestId, 'toolActivityError', {
+                                phaseId: toolPhaseId,
+                                toolCallId: toolCall.id,
+                                toolName,
+                                status: 'error',
+                                summary: `Blocked ${toolName}`,
+                                rawResult: blockedResult,
+                                startedAt,
+                                finishedAt: Date.now(),
+                                durationMs: Date.now() - startedAt,
+                                manifest,
+                                controlState: blockedState,
+                                errorMessage: blockedReason,
+                            });
+                            activePhaseId = toolPhaseId;
+                            if (controlDecision.stopTurn) {
+                                await this.transitionTurnPhase(turnRequestId, 'awaiting_user', {
+                                    budgetState: this.workspaceManager.estimateTokenCount(),
+                                    activeToolCallIds: [],
+                                });
+                                continueLoop = false;
+                                break;
+                            }
+                            continue;
+                        }
 
                         // ── Checkpoint before file writes ────────────────────
                         const checkpoints = await this.createCheckpointsForTool(toolName, toolArgs);
@@ -1134,7 +1315,21 @@ export class TaskController {
 
                         const result = await globalToolRegistry.executeTool(toolName, toolArgs);
                         const resultWithCheckpoints = this.attachCheckpointsToToolResult(result, checkpoints);
-                        const normalizedResult = this.normalizeToolResult(resultWithCheckpoints, toolName, summary, startedAt);
+                        const normalizedResult = this.normalizeToolResult(
+                            resultWithCheckpoints,
+                            toolName,
+                            summary,
+                            startedAt,
+                            manifest,
+                            controlStateBeforeExecution,
+                        );
+                        const toolControlState = toolControl.afterToolExecution(
+                            toolName,
+                            toolArgs,
+                            normalizedResult.status === 'error' ? 'error' : 'success',
+                            normalizedResult.summary,
+                        );
+                        this.emitToolControlState(turnRequestId, toolControlState);
 
                         // Tool result history'e compact olarak gönder
                         // run_command için stdout/stderr'i truncate et — context window'u korur
@@ -1147,9 +1342,21 @@ export class TaskController {
                         await this.workspaceManager.persistState();
 
                         if (normalizedResult.status === 'error') {
-                            this.emitTurnEvent(turnRequestId, 'toolActivityError', { phaseId: toolPhaseId, toolCallId: toolCall.id, ...normalizedResult });
+                            this.emitTurnEvent(turnRequestId, 'toolActivityError', {
+                                phaseId: toolPhaseId,
+                                toolCallId: toolCall.id,
+                                ...normalizedResult,
+                                manifest,
+                                controlState: toolControlState,
+                            });
                         } else {
-                            this.emitTurnEvent(turnRequestId, 'toolActivityDone', { phaseId: toolPhaseId, toolCallId: toolCall.id, ...normalizedResult });
+                            this.emitTurnEvent(turnRequestId, 'toolActivityDone', {
+                                phaseId: toolPhaseId,
+                                toolCallId: toolCall.id,
+                                ...normalizedResult,
+                                manifest,
+                                controlState: toolControlState,
+                            });
                         }
 
                         activePhaseId = toolPhaseId;

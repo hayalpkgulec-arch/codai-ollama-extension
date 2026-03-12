@@ -609,13 +609,98 @@ const DiagnosticsCard = memo(({ tool }: { tool: ToolCall }) => {
 });
 DiagnosticsCard.displayName = 'DiagnosticsCard';
 
+function parseWebFetchResult(rawResult?: string) {
+  if (!rawResult || !rawResult.trim().startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(rawResult);
+    if (parsed?.__tool !== 'web_fetch') return null;
+    return parsed as {
+      status: 'success' | 'error';
+      summary?: string;
+      url?: string;
+      finalUrl?: string;
+      host?: string;
+      statusCode?: number;
+      contentType?: string;
+      title?: string;
+      excerpt?: string;
+      links?: Array<{ text?: string; url?: string }>;
+      cached?: boolean;
+      errorMessage?: string;
+      durationMs?: number;
+    };
+  } catch {
+    return null;
+  }
+}
+
 const WebFetchCard = memo(({ tool }: { tool: ToolCall }) => {
-  const url = (tool.args?.url as string) || '';
-  let display = url || 'URL';
-  try { display = new URL(url).hostname; } catch { /* */ }
-  const chars = tool.status !== 'running' && tool.result
-    ? `${tool.result.length} chars` : undefined;
-  return <SimplePill tool={tool} icon={<Globe size={11} />} label={display} meta={chars} />;
+  const parsed = parseWebFetchResult(tool.result);
+  const sourceUrl = parsed?.finalUrl || parsed?.url || (tool.args?.url as string) || '';
+  let host = parsed?.host || sourceUrl || 'Web source';
+  try { host = parsed?.host || new URL(sourceUrl).host; } catch { /* */ }
+  const title = parsed?.title || parsed?.summary || host;
+  const excerpt = parsed?.excerpt || parsed?.errorMessage || '';
+  const statusMeta = [
+    parsed?.statusCode ? `${parsed.statusCode}` : null,
+    parsed?.contentType ? parsed.contentType.replace(/^([^;]+).*$/, '$1') : null,
+    parsed?.cached ? 'cache' : (tool.status === 'running' ? null : 'live'),
+  ].filter(Boolean).join(' · ');
+  const lastAlert = tool.controlState?.alerts?.[tool.controlState.alerts.length - 1];
+
+  if (tool.status === 'running' && !parsed) {
+    return <SimplePill tool={tool} icon={<Globe size={11} />} label={host} meta="fetching" />;
+  }
+
+  return (
+    <div className={`web-fetch-card ${tool.status}`}>
+      <div className="web-fetch-card__header">
+        <div className="web-fetch-card__title-row">
+          <StatusDot status={tool.status} />
+          <span className="pill-icon"><Globe size={11} /></span>
+          <span className="web-fetch-card__title">{title}</span>
+        </div>
+        {sourceUrl && (
+          <button
+            className="web-fetch-card__open"
+            onClick={() => vscode.postMessage({ type: 'openUrl', url: sourceUrl })}
+            title="Open source"
+          >
+            <ExternalLink size={10} />
+          </button>
+        )}
+      </div>
+      <div className="web-fetch-card__meta">
+        <span>{host}</span>
+        {statusMeta && <span>{statusMeta}</span>}
+      </div>
+      {excerpt && (
+        <div className="web-fetch-card__excerpt">
+          {excerpt}
+        </div>
+      )}
+      {parsed?.links && parsed.links.length > 0 && (
+        <div className="web-fetch-card__links">
+          {parsed.links.slice(0, 3).map((link, index) => (
+            <button
+              key={`${link.url || link.text || index}`}
+              className="web-fetch-card__link"
+              onClick={() => link.url && vscode.postMessage({ type: 'openUrl', url: link.url })}
+              disabled={!link.url}
+              title={link.url || link.text || ''}
+            >
+              {(link.text || link.url || 'Link').slice(0, 48)}
+            </button>
+          ))}
+        </div>
+      )}
+      {lastAlert && (
+        <div className={`web-fetch-card__alert web-fetch-card__alert--${lastAlert.severity === 'error' ? 'error' : 'warning'}`}>
+          {lastAlert.message}
+        </div>
+      )}
+    </div>
+  );
 });
 WebFetchCard.displayName = 'WebFetchCard';
 

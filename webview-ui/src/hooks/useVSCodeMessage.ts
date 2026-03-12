@@ -10,6 +10,7 @@ import type {
   ContextWindowStats,
   ContextPreviewPayload,
   LatestTraceSummary,
+  ToolControlState,
   TurnState,
 } from '../types';
 import { vscode } from '../vscode';
@@ -153,6 +154,8 @@ export function useVSCodeMessage() {
   const [contextPreview, setContextPreview] = useState<ContextPreviewPayload | null>(null);
   const [latestTrace, setLatestTrace] = useState<LatestTraceSummary | null>(null);
   const [turnState, setTurnState] = useState<TurnState | null>(null);
+  const [toolControlState, setToolControlState] = useState<ToolControlState | null>(null);
+  const [toolControlNotice, setToolControlNotice] = useState<{ severity: 'info' | 'warning' | 'error'; message: string } | null>(null);
   const [preflightNotice, setPreflightNotice] = useState<{ severity: 'warning' | 'error'; warnings: string[]; errors: string[] } | null>(null);
   const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [contextCompactionNotice, setContextCompactionNotice] = useState<string | null>(null);
@@ -222,6 +225,8 @@ export function useVSCodeMessage() {
           setContextPreview(msg.contextPreview || null);
           setLatestTrace(msg.latestTrace || null);
           setTurnState(msg.turnState || null);
+          setToolControlState(msg.toolControlState || null);
+          setToolControlNotice(null);
           setPreflightNotice(null);
           setResumeNotice(
             msg.turnState?.recoveredFromPreviousRun
@@ -239,6 +244,7 @@ export function useVSCodeMessage() {
           setIsProcessing(true);
           setIsStreaming(false);
           setContextCompactionNotice(null);
+          setToolControlNotice(null);
           setPreflightNotice(null);
           setResumeNotice(null);
           setTaskDone(null);
@@ -348,6 +354,8 @@ export function useVSCodeMessage() {
             status: 'running',
             args: msg.args,
             startedAt: (msg.startedAt as number) || Date.now(),
+            manifest: msg.manifest || undefined,
+            controlState: msg.controlState || null,
           };
           const toolSeg: Segment = { type: 'tool', tool: newTool };
 
@@ -401,6 +409,8 @@ export function useVSCodeMessage() {
                     status: ok ? 'done' as const : 'error' as const,
                     result: msg.rawResult || msg.errorMessage || msg.summary,
                     finishedAt: (msg.finishedAt as number) || Date.now(),
+                    manifest: msg.manifest || seg.tool.manifest,
+                    controlState: msg.controlState || seg.tool.controlState || null,
                     // write_file için extra fields
                     ...(msg.hunks !== undefined ? {
                       hunks: msg.hunks,
@@ -490,6 +500,7 @@ export function useVSCodeMessage() {
         case 'turnDone':
           setIsProcessing(false);
           setIsStreaming(false);
+          setToolControlNotice(null);
           setTurnState((prev) => prev ? {
             ...prev,
             phase: prev.phase === 'failed' || prev.phase === 'aborted' || prev.phase === 'awaiting_user'
@@ -533,6 +544,7 @@ export function useVSCodeMessage() {
           setContextCompactionNotice(null);
           setPreflightNotice(null);
           setResumeNotice(null);
+          setToolControlNotice(null);
           if (Array.isArray(msg.messages) && msg.messages.length > 0) {
             // Messages are already in UI segment format (saved by App.tsx)
             const restored = msg.messages.map((m: any, i: number) => ({
@@ -554,6 +566,7 @@ export function useVSCodeMessage() {
           setPendingQuestions(null);
           setPlanSaved(null);
           setTurnState(null);
+          setToolControlState(null);
           setIterationCount(0);
           bumpScroll();
           break;
@@ -564,6 +577,8 @@ export function useVSCodeMessage() {
           setContextPreview(null);
           setLatestTrace(null);
           setTurnState(null);
+          setToolControlState(null);
+          setToolControlNotice(null);
           setPreflightNotice(null);
           setResumeNotice(null);
           setTodoItems('');
@@ -664,6 +679,21 @@ export function useVSCodeMessage() {
         case 'turnState':
           if (msg?.turnId) {
             setTurnState(msg as TurnState);
+          }
+          break;
+
+        case 'toolControlState':
+          if (msg?.turnId) {
+            setToolControlState(msg as ToolControlState);
+          }
+          break;
+
+        case 'toolControlNotice':
+          if (typeof msg?.message === 'string' && msg.message.trim()) {
+            setToolControlNotice({
+              severity: msg.severity === 'error' ? 'error' : msg.severity === 'info' ? 'info' : 'warning',
+              message: msg.message,
+            });
           }
           break;
 
@@ -769,6 +799,8 @@ export function useVSCodeMessage() {
     contextPreview,
     latestTrace,
     turnState,
+    toolControlState,
+    toolControlNotice,
     preflightNotice,
     resumeNotice,
     contextCompactionNotice,

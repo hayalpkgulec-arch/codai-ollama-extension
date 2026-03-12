@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.0.48] - 2026-03-13
+### Added
+- Tool manifests and per-turn tool control now track risk, repetition, blocked calls, browsing focus, and recommended next actions across the agent loop
+- Structured `web_fetch` responses now capture status code, content type, title, excerpt, extracted links, cache usage, and local control warnings
+- New contract tests cover tool-control loop prevention and structured web-fetch parsing
+
+### Changed
+- The task loop now attaches manifest and control state metadata to tool events, so the Trace drawer can show what the agent is doing and why it was blocked
+- The chat UI now renders richer web-fetch cards with source metadata, excerpts, quick-open links, and control alerts instead of a single generic pill
+
+---
+
 ## [0.0.47] - 2026-03-12
 ### Added
 - Shared provider capability registry, provider preflight validation, and transport adapters now form a single provider contract layer across the extension and webview
