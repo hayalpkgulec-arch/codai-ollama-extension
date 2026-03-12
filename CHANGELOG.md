@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.43] - 2026-03-12
+### Fixed
+- The inline `working` badge was removed from the composer so it no longer collides with the send or stop control
+
+### Changed
+- The processing state is back under the chat stream as a simple shimmer status line instead of living inside the input footer
+- Thinking blocks now use a cleaner disclosure card layout with a compact timing row, bold title, and softer body copy
+
+---
+
 ## [0.0.42] - 2026-03-12
 ### Fixed
 - Provider settings now persist separate API keys, extra rotation keys, and base URLs for each provider instead of only remembering the active one

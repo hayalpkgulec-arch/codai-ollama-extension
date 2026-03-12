@@ -19,7 +19,7 @@ import { ProviderSettings } from './components/settings/ProviderSettings';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
 import type { AutoApproveConfig } from './types';
-import { ArrowUp, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare, Bot } from 'lucide-react';
+import { ArrowUp, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare } from 'lucide-react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
 
@@ -448,6 +448,15 @@ export default function App() {
 
   const isEmpty = visible.length === 0 && !isProcessing;
   const slashCommands = useMemo(() => [...BUILTIN_SLASH_COMMANDS, ...customSlashCommands], [customSlashCommands]);
+  const lastAssistantMessage = useMemo(
+    () => [...messages].reverse().find((msg) => msg.role === 'assistant') ?? null,
+    [messages],
+  );
+  const lastAssistantHasVisibleContent = !!lastAssistantMessage && (
+    lastAssistantMessage.segments.length > 0 ||
+    !!lastAssistantMessage.error
+  );
+  const showWorkingIndicator = isProcessing && !isStreaming && !lastAssistantHasVisibleContent;
 
   return (
     <div className="app">
@@ -726,13 +735,13 @@ export default function App() {
               </div>
             ))}
 
-            {/* WorkingIndicator — between turns, before first assistant message appears */}
-            {isProcessing && !messages.some(m => m.role === 'assistant') && (
+            {/* WorkingIndicator — under the chat stream while we're waiting for visible output */}
+            {showWorkingIndicator && (
               <WorkingIndicator
                 isProcessing={isProcessing}
                 isStreaming={isStreaming}
                 iterationCount={iterationCount}
-                lastMessageHasContent={false}
+                lastMessageHasContent={lastAssistantHasVisibleContent}
               />
             )}
 
@@ -819,16 +828,6 @@ export default function App() {
               >
                 <GitCompare size={12} />
               </button>
-
-              {/* Background agent status indicator */}
-              {isProcessing && (
-                <div className="agent-status-pill" title={`Agent running · iteration ${iterationCount}`}>
-                  <Bot size={11} className="agent-status-icon spin-slow" />
-                  <span className="agent-status-label">
-                    {iterationCount > 1 ? `iter ${iterationCount}` : 'working'}
-                  </span>
-                </div>
-              )}
             </div>
 
             <div className="input-bottom-right">

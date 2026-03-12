@@ -1,8 +1,8 @@
 /**
- * WorkingIndicator — Kilo-style animated "working" shimmer
- * Shown between iterations when AI is actively processing.
+ * WorkingIndicator
+ * Shown below the conversation while the assistant is processing but has not
+ * yet rendered a visible thinking/content/tool block for the current turn.
  */
-import { useEffect, useState } from 'react';
 
 interface WorkingIndicatorProps {
   isProcessing: boolean;
@@ -12,29 +12,12 @@ interface WorkingIndicatorProps {
   lastMessageHasContent: boolean;
 }
 
-const MESSAGES = [
-  'Working…',
-  'Thinking…',
-  'Analyzing…',
-  'Processing…',
-  'Reading files…',
-  'Running tools…',
-];
-
 export function WorkingIndicator({
   isProcessing,
   isStreaming,
   iterationCount,
   lastMessageHasContent,
 }: WorkingIndicatorProps) {
-  const [msg, setMsg] = useState(MESSAGES[0]);
-
-  useEffect(() => {
-    if (!isProcessing) return;
-    const idx = iterationCount % MESSAGES.length;
-    setMsg(MESSAGES[idx]);
-  }, [isProcessing, iterationCount]);
-
   // Sadece gerçekten "boşta bekliyor" durumunda göster:
   // - İşlem devam ediyor
   // - Streaming yok (henüz token gelmiyor)
@@ -42,14 +25,11 @@ export function WorkingIndicator({
   //   → aksi halde duplicate "..." görünür
   if (!isProcessing || isStreaming || lastMessageHasContent) return null;
 
+  const label = iterationCount > 1 ? 'Working...' : 'Generating...';
+
   return (
     <div className="working-indicator" role="status" aria-label="AI is working">
-      <div className="working-dots">
-        <span />
-        <span />
-        <span />
-      </div>
-      <span className="working-shimmer">{msg}</span>
+      <span className="working-shimmer">{label}</span>
     </div>
   );
 }

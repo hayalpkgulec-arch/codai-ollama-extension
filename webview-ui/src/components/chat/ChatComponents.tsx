@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo, memo } from 'react';
 import { MarkdownRenderer } from '../../MarkdownRenderer';
 import type { ToolCall, ToolStatus, ChatMessage, ThinkingSegment, ContentSegment, CheckpointEntry } from '../../types';
 import type { ProposalDecisions } from '../../App';
@@ -44,47 +44,95 @@ export const TypewriterText = memo(({ text, speed = 20 }: { text: string; speed?
 });
 TypewriterText.displayName = 'TypewriterText';
 
+function formatThoughtLabel(ms: number | undefined, done: boolean): string {
+  const prefix = done ? 'Thought' : 'Thinking';
+  if (ms == null) return prefix;
+  if (ms < 1000) return `${prefix} for <1s`;
+  if (ms < 10000) return `${prefix} for ${(ms / 1000).toFixed(1)}s`;
+  return `${prefix} for ${Math.round(ms / 1000)}s`;
+}
+
+function buildThinkingCopy(text: string, done: boolean): { title: string; body: string } {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  const fallbackTitle = done ? 'Reasoning Summary' : 'Advancing Toward a Solution';
+
+  if (!normalized) {
+    return {
+      title: fallbackTitle,
+      body: done
+        ? 'The reasoning step finished without extra detail.'
+        : 'Working through the next step.',
+    };
+  }
+
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length > 1 && lines[0].length <= 80) {
+    return {
+      title: lines[0],
+      body: lines.slice(1).join('\n\n'),
+    };
+  }
+
+  const sentences = normalized
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  if (sentences.length > 1 && sentences[0].length <= 80) {
+    return {
+      title: sentences[0].replace(/[.!?]+$/, ''),
+      body: sentences.slice(1).join(' '),
+    };
+  }
+
+  return {
+    title: fallbackTitle,
+    body: normalized,
+  };
+}
+
 // ─── ThinkingBlock ──────────────────────────────────────────────────────────
 export const ThinkingBlock = memo(({ seg }: { seg: ThinkingSegment }) => {
   const [collapsed, setCollapsed] = useState(false);
-  const [canTop, setCanTop] = useState(false);
-  const [canBottom, setCanBottom] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [liveMs, setLiveMs] = useState(seg.finalMs);
 
-  const checkScroll = useCallback(() => {
-    if (!bodyRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = bodyRef.current;
-    setCanTop(scrollTop > 1);
-    setCanBottom(scrollTop + clientHeight < scrollHeight - 1);
-  }, []);
+  useEffect(() => {
+    if (seg.done) {
+      setLiveMs(seg.finalMs);
+      return;
+    }
+    if (!seg.startedAt) return;
 
-  useEffect(() => { if (seg.done) setCollapsed(true); }, [seg.done]);
+    const updateElapsed = () => setLiveMs(Date.now() - seg.startedAt!);
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 250);
+    return () => window.clearInterval(timer);
+  }, [seg.done, seg.finalMs, seg.startedAt]);
 
   useEffect(() => {
     if (!collapsed && bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
-      checkScroll();
     }
-  }, [seg.text, collapsed, checkScroll]);
+  }, [seg.text, collapsed]);
 
-  const label = !seg.done
-    ? 'Thinking…'
-    : seg.finalMs == null ? 'Thought'
-      : seg.finalMs < 1000 ? `Thought for ${seg.finalMs}ms`
-        : `Thought for ${(seg.finalMs / 1000).toFixed(1)}s`;
+  const label = formatThoughtLabel(seg.done ? seg.finalMs : liveMs, seg.done);
+  const thinkingCopy = useMemo(() => buildThinkingCopy(seg.text, seg.done), [seg.done, seg.text]);
 
   return (
     <div className={`thinking-block ${seg.done ? 'done' : 'live'}`}>
       <button className="thinking-header" onClick={() => setCollapsed(c => !c)}>
-        <span className={`thinking-indicator${seg.done ? '' : ' pulse'}`} />
-        <span className={`thinking-label${!seg.done ? ' thinking-live-label' : ''}`}>{label}</span>
         <ChevronDown size={13} className={`thinking-chevron${collapsed ? '' : ' open'}`} />
+        <span className={`thinking-label${!seg.done ? ' thinking-live-label' : ''}`}>{label}</span>
       </button>
       <CollapsibleBody open={!collapsed}>
-        <div className="thinking-scroll-wrap">
-          <div className="thinking-body" ref={bodyRef} onScroll={checkScroll}>{seg.text}</div>
-          {canTop && <div className="thinking-fade-top" />}
-          {canBottom && <div className="thinking-fade-bottom" />}
+        <div className="thinking-card">
+          <div className="thinking-title">{thinkingCopy.title}</div>
+          <div className="thinking-body" ref={bodyRef}>{thinkingCopy.body}</div>
         </div>
       </CollapsibleBody>
     </div>
