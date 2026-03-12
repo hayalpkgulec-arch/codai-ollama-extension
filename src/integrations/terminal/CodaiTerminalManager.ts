@@ -196,11 +196,12 @@ function killProcessTree(pid: number): void {
 // ─── Shared CodAI terminal singleton ────────────────────────────────────────
 let _codaiTerminal: vscode.Terminal | undefined;
 
-export function getCodaiTerminal(): vscode.Terminal {
+export function getCodaiTerminal(cwd?: string): vscode.Terminal {
     if (!_codaiTerminal || _codaiTerminal.exitStatus !== undefined) {
         _codaiTerminal = vscode.window.createTerminal({
             name: 'CodAI',
             iconPath: new vscode.ThemeIcon('sparkle'),
+            cwd,
         });
     }
     return _codaiTerminal;
@@ -288,6 +289,13 @@ export async function runCommand(
     const timeoutMs      = isBackground ? 3_000 : Math.min(options.timeout ?? 60_000, 300_000);
     const bgId           = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const startedAt      = Date.now();
+
+    // ── Preferred path: VSCode shell integration for foreground commands ─────
+    // This avoids the "preview terminal != real process" mismatch when available.
+    if (!isBackground) {
+        const shellResult = await tryRunViaShellIntegration(command, workspaceRoot, timeoutMs, startedAt);
+        if (shellResult) return shellResult;
+    }
 
     // ── Mirror to VSCode terminal ────────────────────────────────────────────
     mirrorToTerminal(command);
@@ -592,6 +600,109 @@ export async function runCommand(
             });
         }
     });
+}
+
+async function tryRunViaShellIntegration(
+    command: string,
+    workspaceRoot: string,
+    timeoutMs: number,
+    startedAt: number,
+): Promise<RunResult | null> {
+    try {
+        const term = getCodaiTerminal(workspaceRoot) as any;
+        term.show(true);
+
+        const integration = term.shellIntegration;
+        if (!integration || typeof integration.executeCommand !== 'function') return null;
+
+        const { isPowerShell } = getShellConfig();
+        const fullCommand = prependWorkspaceCwd(command, workspaceRoot, isPowerShell);
+        const execution = integration.executeCommand(fullCommand);
+        if (!execution || typeof execution.read !== 'function') return null;
+
+        let stdoutRaw = '';
+        let stderrRaw = '';
+        let firstChunk = true;
+        let interactive = false;
+        let hasError = false;
+        const maxBytes = 512 * 1024;
+
+        const timeoutPromise = new Promise<'timeout'>((resolve) => {
+            setTimeout(() => resolve('timeout'), timeoutMs);
+        });
+
+        const readPromise = (async () => {
+            for await (const chunk of execution.read()) {
+                let text = String(chunk ?? '');
+                text = firstChunk ? cleanFirstChunk(text, command) : removeVSCodeSequences(stripAnsi(text));
+                firstChunk = false;
+                if (!text) continue;
+                if (stdoutRaw.length < maxBytes) stdoutRaw += text;
+                const lastLines = text.split('\n').slice(-3).join('\n');
+                if (INTERACTIVE_PATTERNS.some(p => p.test(lastLines))) interactive = true;
+                if (ERROR_PATTERNS.some(p => p.test(text))) hasError = true;
+                if (interactive) break;
+            }
+            return 'done' as const;
+        })();
+
+        const winner = await Promise.race([readPromise, timeoutPromise]);
+        const lines = buildLines(stdoutRaw, stderrRaw);
+
+        if (winner === 'timeout') {
+            return {
+                status: 'timeout',
+                stdout: truncateOutput(lines.stdout),
+                stderr: lines.stderrStr || `Timed out after ${Math.round(timeoutMs / 1000)}s`,
+                exitCode: -1,
+                signal: 'SIGTERM',
+                durationMs: Date.now() - startedAt,
+                background: false,
+                autoDetected: false,
+                truncated: lines.stdout.length > MAX_OUTPUT_LINES,
+                timedOut: true,
+            };
+        }
+
+        if (interactive) {
+            return {
+                status: 'error',
+                stdout: truncateOutput(lines.stdout) + '\n[Process is waiting for user input — ask the user the needed value, then rerun the command.]',
+                stderr: lines.stderrStr,
+                exitCode: -1,
+                signal: null,
+                durationMs: Date.now() - startedAt,
+                background: false,
+                autoDetected: false,
+                truncated: lines.stdout.length > MAX_OUTPUT_LINES,
+                timedOut: false,
+            };
+        }
+
+        return {
+            status: hasError ? 'error' : 'success',
+            stdout: truncateOutput(lines.stdout),
+            stderr: lines.stderrStr,
+            exitCode: hasError ? 1 : 0,
+            signal: null,
+            durationMs: Date.now() - startedAt,
+            background: false,
+            autoDetected: false,
+            truncated: lines.stdout.length > MAX_OUTPUT_LINES,
+            timedOut: false,
+        };
+    } catch {
+        return null;
+    }
+}
+
+function prependWorkspaceCwd(command: string, workspaceRoot: string, isPowerShell: boolean): string {
+    if (!workspaceRoot) return adaptForShell(command, isPowerShell);
+    if (isPowerShell) {
+        const escaped = workspaceRoot.replace(/'/g, "''");
+        return `Set-Location -LiteralPath '${escaped}'; ${adaptForShell(command, true)}`;
+    }
+    return `cd /d "${workspaceRoot}" && ${command}`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

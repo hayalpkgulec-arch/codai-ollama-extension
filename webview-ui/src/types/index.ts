@@ -41,6 +41,14 @@ export interface PlanSavedPayload {
   };
 }
 
+export interface CheckpointEntry {
+  id: string;
+  timestamp: string;
+  filePath: string;
+  originalPath: string;
+  toolName: string;
+}
+
 export type ToolStatus = 'running' | 'done' | 'error';
 
 

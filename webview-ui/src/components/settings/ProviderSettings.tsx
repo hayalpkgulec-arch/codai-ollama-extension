@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { vscode } from '../../vscode';
 import { AutoApproveSettings } from './AutoApproveSettings';
+import { CheckpointPanel } from './CheckpointPanel';
+import type { AutoApproveConfig } from '../../types';
 
 export type ProviderId =
     | 'ollama'
@@ -189,6 +191,7 @@ interface ProviderSettingsProps {
     baseUrlValue: string;
     onApiKeyChange: (value: string) => void;
     onBaseUrlChange: (value: string) => void;
+    onAutoApproveChange?: (cfg: AutoApproveConfig) => void;
 }
 
 export const ProviderSettings = memo(({
@@ -203,6 +206,7 @@ export const ProviderSettings = memo(({
     baseUrlValue,
     onApiKeyChange,
     onBaseUrlChange,
+    onAutoApproveChange,
 }: ProviderSettingsProps) => {
     const [selectedId, setSelectedId] = useState<ProviderId>(currentProviderId);
     const apiKey = apiKeyValue;
@@ -573,7 +577,8 @@ export const ProviderSettings = memo(({
                 </div>
             </div>
 
-            <AutoApproveSettings />
+            <AutoApproveSettings onConfigChange={onAutoApproveChange} />
+            <CheckpointPanel />
         </div>
     );
 });

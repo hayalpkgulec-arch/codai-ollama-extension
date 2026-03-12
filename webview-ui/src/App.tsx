@@ -16,7 +16,9 @@ import { ContextMenu } from './components/chat/ContextMenu';
 import { SlashCommandMenu } from './components/chat/SlashCommandMenu';
 import type { SlashCommand } from './components/chat/SlashCommandMenu';
 import { ProviderSettings } from './components/settings/ProviderSettings';
+import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
+import type { AutoApproveConfig } from './types';
 import { Send, Square, CheckCheck, XCircle, Plus, Sparkles, FileCode, Settings, History, Terminal, GitCompare, Bot } from 'lucide-react';
 import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
@@ -87,6 +89,7 @@ export default function App() {
   // / Slash command menu
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
+  const [autoApproveConfig, setAutoApproveConfig] = useState<AutoApproveConfig>(() => loadAutoApproveConfig());
   const isProviderLocal = providerInfo.providerId === 'ollama' || providerInfo.providerId === 'custom';
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -188,12 +191,13 @@ export default function App() {
         const isWrite = ['write_file', 'create_file', 'edit_file', 'write_to_file'].includes(seg.tool.name);
         // BUG 1 FIX: phaseId ile key, dosya yolu değil
         if (isWrite && seg.tool.status === 'done' && !decisions.has(seg.tool.phaseId)) {
+          if (autoApproveConfig.all || autoApproveConfig.write_file) continue;
           pending.push({ phaseId: seg.tool.phaseId, filename: seg.tool.summary });
         }
       }
     }
     return pending;
-  }, [messages, decisions]);
+  }, [messages, decisions, autoApproveConfig]);
 
 
 
@@ -428,6 +432,7 @@ export default function App() {
           baseUrlValue={settingsBaseUrl}
           onApiKeyChange={setSettingsApiKey}
           onBaseUrlChange={setSettingsBaseUrl}
+          onAutoApproveChange={setAutoApproveConfig}
           onClose={() => setShowSettings(false)}
           onProviderModels={(_providerId, models, isLocal) => {
             const dynamicProviderModels = models.map(m => ({
