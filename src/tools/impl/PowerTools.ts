@@ -3,6 +3,7 @@ import { Tool } from '../../core/types';
 import * as path from 'path';
 import { promises as fs } from 'fs';
 import { WebFetchService } from '../../services/WebFetchService';
+import { WebSearchService } from '../../services/WebSearchService';
 
 // ── web_fetch ────────────────────────────────────────────────────────────────
 // Fetches content from a URL. Useful for documentation, APIs, etc.
@@ -40,6 +41,39 @@ export class WebFetchTool extends BaseTool {
 
     async execute(args: { url: string; maxChars?: number; timeoutMs?: number; preferCache?: boolean }): Promise<string> {
         return this.webFetchService.fetch(args);
+    }
+}
+
+export class WebSearchTool extends BaseTool {
+    private readonly webSearchService = new WebSearchService();
+
+    get definition(): Tool {
+        return {
+            name: 'web_search',
+            description: 'Search the web for recent or relevant sources and return structured result snippets with resolved URLs.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: {
+                        type: 'string',
+                        description: 'Search query to run on the web'
+                    },
+                    maxResults: {
+                        type: 'number',
+                        description: 'Maximum number of results to return (default: 5)'
+                    },
+                    timeoutMs: {
+                        type: 'number',
+                        description: 'Search timeout in milliseconds (default: 12000)'
+                    }
+                },
+                required: ['query']
+            }
+        };
+    }
+
+    async execute(args: { query: string; maxResults?: number; timeoutMs?: number }): Promise<string> {
+        return this.webSearchService.search(args);
     }
 }
 

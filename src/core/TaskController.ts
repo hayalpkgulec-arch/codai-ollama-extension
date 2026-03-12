@@ -13,6 +13,11 @@ import { WorkspaceStorage } from '../services/WorkspaceStorage';
 import { ProviderPreflight } from '../services/ProviderPreflight';
 import { TurnTraceService } from '../services/TurnTraceService';
 import { ToolControlService } from '../services/ToolControlService';
+import { MessageStateStore } from './runtime/MessageStateStore';
+import { RuntimeEventBus } from './runtime/RuntimeEventBus';
+import { TaskRuntime } from './runtime/TaskRuntime';
+import { ToolExecutor } from './runtime/ToolExecutor';
+import { ToolPolicyService, type AutoApproveConfig } from './runtime/ToolPolicyService';
 import type { ToolArtifact, ToolExecutionResult, ToolManifest } from './types';
 import type { ToolCatalogEntry, ToolControlState, TurnPhase } from '../services/runtimeTypes';
 
@@ -29,6 +34,11 @@ export class TaskController {
     private activeAbortController?: AbortController;
     private lastToolControlState: ToolControlState | null = null;
     private toolCatalogCache: ToolCatalogEntry[] | null = null;
+    private readonly messageStateStore: MessageStateStore;
+    private readonly runtimeEventBus: RuntimeEventBus;
+    private readonly toolPolicyService: ToolPolicyService;
+    private readonly toolExecutor: ToolExecutor;
+    private readonly taskRuntime: TaskRuntime;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -47,6 +57,40 @@ export class TaskController {
             apiKey: ps.apiKey,
             apiKeys: ps.apiKeys,
             model: defaultModel,
+        });
+        this.runtimeEventBus = new RuntimeEventBus(
+            (turnId, type, payload) => this.emitTurnEvent(turnId, type, payload),
+            (turnId, state) => this.emitToolControlState(turnId, state),
+            (turnId, message, severity) => this.emitToolControlNotice(turnId, message, severity),
+        );
+        this.messageStateStore = new MessageStateStore(
+            this.storage,
+            this._extensionContext,
+            this.workspaceManager,
+            this.traceService,
+            () => this.lastToolControlState
+        );
+        this.toolPolicyService = new ToolPolicyService(
+            () => this.autoApproveConfig,
+            (toolName) => globalToolRegistry.getToolManifest(toolName)
+        );
+        this.toolExecutor = new ToolExecutor({
+            registry: globalToolRegistry,
+            policyService: this.toolPolicyService,
+            eventBus: this.runtimeEventBus,
+            createCheckpoints: (toolName, args) => this.createCheckpointsForTool(toolName, args),
+            hasRunningBgProcesses: () => hasRunningBgProcesses(),
+            getRunningBgProcesses: () => getRunningBgProcesses(),
+        });
+        this.taskRuntime = new TaskRuntime({
+            storage: this.storage,
+            workspaceManager: this.workspaceManager,
+            llmService: this.llmService,
+            preflight: this.preflight,
+            traceService: this.traceService,
+            eventBus: this.runtimeEventBus,
+            toolExecutor: this.toolExecutor,
+            buildEnvDetails: () => this.buildEnvDetails(),
         });
     }
 
@@ -155,13 +199,7 @@ export class TaskController {
     public getLLMKeyCount(): number { return this.llmService.getKeyCount(); }
 
     // ── Auto-approve config ───────────────────────────────────────────────────
-    private autoApproveConfig: {
-        read_file: boolean;
-        write_file: boolean;
-        run_command: boolean;
-        web_fetch: boolean;
-        all: boolean;
-    } = { read_file: true, write_file: false, run_command: false, web_fetch: false, all: false };
+    private autoApproveConfig: AutoApproveConfig = { read_file: true, write_file: false, run_command: false, web_fetch: false, all: false };
 
     public setAutoApproveConfig(cfg: typeof this.autoApproveConfig): void {
         this.autoApproveConfig = { ...this.autoApproveConfig, ...cfg };
@@ -185,82 +223,34 @@ export class TaskController {
     private readonly SESSION_STATE_KEY = 'codai_sessions_v1';
 
     public async getSessions(): Promise<any[]> {
-        return this.storage.readSessionIndex<any[]>(
-            this._extensionContext.globalState.get<any[]>(this.SESSION_STATE_KEY) ?? []
-        );
+        return this.messageStateStore.getSessions();
     }
 
     public async upsertSessionMeta(session: any): Promise<void> {
-        const sessions = await this.getSessions();
-        const idx = sessions.findIndex(s => s.id === session.id);
-        if (idx >= 0) sessions[idx] = session;
-        else sessions.unshift(session);
-        const limited = sessions.slice(0, 100);
-        await this.storage.writeSessionIndex(limited);
-        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, limited);
+        await this.messageStateStore.upsertSessionMeta(session);
     }
 
     public async updateSessionMeta(sessionId: string, updates: any): Promise<void> {
-        const sessions = await this.getSessions();
-        const idx = sessions.findIndex(s => s.id === sessionId);
-        if (idx >= 0) {
-            sessions[idx] = { ...sessions[idx], ...updates, updatedAt: new Date().toISOString() };
-            await this.storage.writeSessionIndex(sessions);
-            await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, sessions);
-        }
+        await this.messageStateStore.updateSessionMeta(sessionId, updates);
     }
 
     public async renameSession(sessionId: string, title: string): Promise<void> {
-        await this.updateSessionMeta(sessionId, { title });
+        await this.messageStateStore.renameSession(sessionId, title);
     }
 
     public async saveSessionHistory(sessionId: string, messages: any[]): Promise<void> {
-        const key = `codai_session_history_${sessionId}`;
-        const payload = {
-            messages,
-            transcriptHistory: this.workspaceManager.getTranscriptHistory(),
-            conversationHistory: this.workspaceManager.getConversationHistory(),
-            mode: this.workspaceManager.getMode(),
-            model: this.workspaceManager.getDefaultModel(),
-            planTodos: this.workspaceManager.getPlanTodos(),
-            planSummary: this.workspaceManager.getPlanSummary(),
-            savedAt: new Date().toISOString(),
-        };
-        await this.storage.writeSessionHistory(sessionId, payload);
-        await this._extensionContext.globalState.update(key, payload);
+        await this.messageStateStore.saveSessionHistory(sessionId, messages);
     }
 
     public async loadSession(sessionId: string): Promise<void> {
         if (!this._view) return;
-        const key = `codai_session_history_${sessionId}`;
-        const stored = this.storage.readSessionHistory<any>(
-            sessionId,
-            this._extensionContext.globalState.get<any>(key) ?? []
-        );
-        const messages = Array.isArray(stored)
-            ? stored
-            : (Array.isArray(stored?.messages) ? stored.messages : []);
-        const sessions = await this.getSessions();
-        const meta = sessions.find(s => s.id === sessionId);
-        if (stored && !Array.isArray(stored)) {
-            this.workspaceManager.restoreSessionState({
-                transcriptHistory: Array.isArray(stored.transcriptHistory) ? stored.transcriptHistory : [],
-                conversationHistory: Array.isArray(stored.conversationHistory) ? stored.conversationHistory : [],
-                mode: stored.mode || meta?.mode,
-                model: stored.model || meta?.model,
-                planTodos: typeof stored.planTodos === 'string' ? stored.planTodos : '',
-                planSummary: typeof stored.planSummary === 'string' ? stored.planSummary : '',
-            });
-        } else {
-            this.workspaceManager.clearHistory();
-            if (meta?.mode) this.workspaceManager.setMode(meta.mode);
-            if (typeof meta?.model === 'string' && meta.model) this.workspaceManager.changeModel(meta.model);
-        }
+        const loaded = await this.messageStateStore.loadSession(sessionId);
+        const meta = loaded.meta;
         this._view.postMessage({
             type: 'sessionLoaded',
             sessionId,
-            messages,
-            mode: meta?.mode ?? 'code',
+            messages: loaded.messages,
+            mode: loaded.payload.messageState.mode || meta?.mode || 'code',
             title: meta?.title ?? 'Chat',
         });
         this._view.postMessage({
@@ -313,14 +303,7 @@ export class TaskController {
     }
 
     public async deleteSession(sessionId: string): Promise<void> {
-        const sessions = await this.getSessions();
-        const filtered = sessions.filter((s: any) => s.id !== sessionId);
-        await this.storage.writeSessionIndex(filtered);
-        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, filtered);
-        // Also delete the history
-        const histKey = `codai_session_history_${sessionId}`;
-        await this.storage.deleteSessionHistory(sessionId);
-        await this._extensionContext.globalState.update(histKey, undefined);
+        await this.messageStateStore.deleteSession(sessionId);
     }
 
     public postInitialState() {
@@ -989,8 +972,6 @@ export class TaskController {
         const turnRequestId = requestId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         this.turnSequenceByRequestId.set(turnRequestId, 0);
 
-        // T12 FIX: Her yeni görevden önce önceki abort controller'ı temizle
-        // Önceki task abort edilmişse yeni AbortController fresh olmalı
         if (this.activeAbortController) {
             this.activeAbortController.abort();
             this.activeAbortController = undefined;
@@ -998,460 +979,9 @@ export class TaskController {
         this.activeAbortController = new AbortController();
 
         try {
-            const startedAt = Date.now();
-            const providerState = this.workspaceManager.getProviderState();
-            this.emitTurnEvent(turnRequestId, 'turnStart', { userText: message, startedAt });
-            await this.traceService.startTurn({
-                turnId: turnRequestId,
-                requestId: turnRequestId,
-                providerId: providerState.providerId as ProviderId,
-                model: this.workspaceManager.getDefaultModel(),
-                phase: 'preflight',
-                iteration: 0,
-                startedAt,
-                activeToolCallIds: [],
-                budgetState: this.workspaceManager.estimateTokenCount(),
-                traceFilePath: this.storage.getTraceFilePath(turnRequestId),
-            });
-            this.emitCurrentTurnState(turnRequestId);
-
-            // Build environment_details — Cline injects this at end of every user message
-            const envDetails = this.buildEnvDetails();
-            const messageWithEnv = envDetails
-                ? `${message}\n\n${envDetails}`
-                : message;
-
-            const allowedTools = globalToolRegistry.getAllToolDefinitions().filter((tool) => {
-                const allowed = this.workspaceManager.getAllowedToolNames();
-                if (allowed === null) return true;
-                return allowed.includes(tool.name);
-            });
-            const preflight = this.preflight.validateRequest({
-                providerId: providerState.providerId as ProviderId,
-                model: this.workspaceManager.getDefaultModel(),
-                baseUrl: providerState.baseUrl,
-                apiKey: providerState.apiKey,
-                apiKeys: providerState.apiKeys,
-                requiresTools: allowedTools.length > 0 && this.workspaceManager.getMode() !== 'chat',
-                dynamicModels: this.workspaceManager.getProviderModelCatalog(providerState.providerId as ProviderId),
-            });
-            if (!preflight.ok) {
-                this.emitTurnEvent(turnRequestId, 'preflightWarning', {
-                    severity: 'error',
-                    warnings: preflight.warnings,
-                    errors: preflight.errors,
-                    model: preflight.resolvedModel,
-                });
-                await this.traceService.finish(turnRequestId, 'failed', {
-                    error: preflight.errors.join(' '),
-                    budgetState: this.workspaceManager.estimateTokenCount(),
-                });
-                this.emitCurrentTurnState(turnRequestId);
-                this.emitTurnEvent(turnRequestId, 'error', { message: preflight.errors.join(' ') });
-                this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
-                this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
-                this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
-                this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
-                this.turnSequenceByRequestId.delete(turnRequestId);
-                return;
-            }
-            if (preflight.warnings.length > 0) {
-                this.emitTurnEvent(turnRequestId, 'preflightWarning', {
-                    severity: 'warning',
-                    warnings: preflight.warnings,
-                    errors: [],
-                    model: preflight.resolvedModel,
-                });
-            }
-
-            this.workspaceManager.appendToHistory({ role: 'user', content: messageWithEnv });
-            await this.workspaceManager.persistState();
-            const toolControl = new ToolControlService(turnRequestId);
-            this.emitToolControlState(turnRequestId, toolControl.getState());
-
-            let continueLoop = true;
-            const isPlanMode = this.workspaceManager.getMode() === 'plan';
-            // Plan mode: max 6 iterations (explore + ask + write plan = done)
-            // Code mode: 12 iterations
-            let maxIterations = isPlanMode ? 6 : 12;
-            let iteration = 0;
-            let activePhaseId = `pre-${turnRequestId}`;
-            let taskNotesCalledThisLoop = false;
-            // P2 FIX: Detect duplicate task_notes — stop looping if same plan repeated
-            let lastTaskNotesContent = '';
-
-                    const MAX_RATE_LIMIT_RETRIES = 4;
-
-            let rateLimitRetries = 0;
-
-            while (continueLoop && iteration < maxIterations) {
-                iteration++;
-                let lastThinkingSnapshot = '';
-                let lastContentSnapshot = '';
-
-                // ── LLM isteği — rate limit retry ile ────────────────────────
-                let response: any;
-                try {
-                    await this.transitionTurnPhase(turnRequestId, 'llm_request', {
-                        iteration,
-                        budgetState: this.workspaceManager.estimateTokenCount(),
-                        activeToolCallIds: [],
-                    });
-                    response = await this.llmService.chatWithTools(
-                        this.workspaceManager.getDefaultModel(),
-                        this.workspaceManager.getConversationHistory(),
-                        allowedTools,
-                        (thinking) => {
-                            const nextThinking = typeof thinking === 'string' ? thinking : '';
-                            const delta = nextThinking.startsWith(lastThinkingSnapshot)
-                                ? nextThinking.slice(lastThinkingSnapshot.length) : nextThinking;
-                            lastThinkingSnapshot = nextThinking;
-                            if (!delta) return;
-                            this.emitTurnEvent(turnRequestId, 'thinking', { phaseId: activePhaseId, content: nextThinking });
-                        },
-                        (content) => {
-                            const nextContent = typeof content === 'string' ? content : '';
-                            lastContentSnapshot = nextContent;
-                            this.emitTurnEvent(turnRequestId, 'contentChunk', { content: nextContent });
-                        },
-                        this.activeAbortController.signal
-                    );
-                    rateLimitRetries = 0; // başarılı istek → sıfırla
-                } catch (llmError: any) {
-                    const msg: string = llmError?.message || '';
-                    const isAbort = llmError?.name === 'AbortError' || msg.includes('aborted');
-                    const isRateLimit =
-                        msg.includes('Rate limit') ||
-                        msg.includes('rate limit') ||
-                        msg.includes('429') ||
-                        msg.includes('RESOURCE_EXHAUSTED') ||
-                        msg.includes('quota') ||
-                        msg.includes('too many requests') ||
-                        msg.includes('Too Many Requests');
-
-                    if (isAbort) {
-                        await this.traceService.finish(turnRequestId, 'aborted', {
-                            error: msg || 'Task aborted',
-                            budgetState: this.workspaceManager.estimateTokenCount(),
-                        });
-                        this.emitCurrentTurnState(turnRequestId);
-                        continueLoop = false;
-                        break;
-                    }
-
-                    if (isRateLimit && rateLimitRetries < MAX_RATE_LIMIT_RETRIES) {
-                        rateLimitRetries++;
-                        // Exponential backoff: 15s, 30s, 60s, 120s
-                        const waitMs = Math.min(15000 * Math.pow(2, rateLimitRetries - 1), 120000);
-
-                        // Birden fazla key varsa → rotation dene (bekleme yok!)
-                        const rotation = this.llmService.markActiveKeyRateLimited(waitMs);
-                        if (rotation.rotated) {
-                            const keyCount = this.llmService.getKeyCount();
-                            const keyIdx = this.llmService.getActiveKeyIndex() + 1;
-                            this.emitTurnEvent(turnRequestId, 'contentChunk', {
-                                content: `\n\n🔄 Rate limit — key ${keyIdx}/${keyCount} deneniyor…`
-                            });
-                            iteration--; // sayma
-                            continue;
-                        }
-
-                        // Tek key veya hepsi exhausted → bekle
-                        const waitSec = Math.round(waitMs / 1000);
-                        this.emitTurnEvent(turnRequestId, 'rateLimit', {
-                            waitMs, waitSec, attempt: rateLimitRetries, maxAttempts: MAX_RATE_LIMIT_RETRIES
-                        });
-                        this.emitTurnEvent(turnRequestId, 'contentChunk', {
-                            content: `\n\n⏳ Rate limit — ${waitSec}s bekleniyor… (${rateLimitRetries}/${MAX_RATE_LIMIT_RETRIES})`
-                        });
-                        await new Promise(res => setTimeout(res, waitMs));
-                        iteration--; // bu iterasyonu sayma
-                        continue;
-                    }
-
-                    // Kurtarılamaz hata
-                    continueLoop = false;
-                    await this.traceService.finish(turnRequestId, 'failed', {
-                        error: msg || 'LLM request failed',
-                        budgetState: this.workspaceManager.estimateTokenCount(),
-                    });
-                    this.emitCurrentTurnState(turnRequestId);
-                    this.emitTurnEvent(turnRequestId, 'error', { message: msg || 'LLM request failed' });
-                    this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
-                    this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
-                    this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
-                    this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
-                    this.turnSequenceByRequestId.delete(turnRequestId);
-                    return;
-                }
-
-                // ── Tool çağrıları ─────────────────────────────────────────────
-                const rawToolCalls = response?.message?.tool_calls ?? response?.tool_calls ?? [];
-                const usedToolCallIds = new Set<string>();
-                const toolCalls = Array.isArray(rawToolCalls)
-                    ? rawToolCalls
-                        .map((toolCall, index) => this.normalizeToolCall(toolCall, iteration, index, usedToolCallIds))
-                        .filter((toolCall) => toolCall.function.name)
-                    : [];
-
-                if (toolCalls.length > 0) {
-                    await this.transitionTurnPhase(turnRequestId, 'tool_execution', {
-                        iteration,
-                        activeToolCallIds: toolCalls.map((toolCall) => toolCall.id),
-                        budgetState: this.workspaceManager.estimateTokenCount(),
-                    });
-                    this.workspaceManager.appendToHistory({
-                        role: 'assistant',
-                        content: response?.message?.content ?? null,
-                        tool_calls: toolCalls
-                    });
-
-                    for (const toolCall of toolCalls) {
-                        const toolArgs = this.parseToolArguments(toolCall.function.arguments);
-                        const toolName = toolCall.function.name;
-                        const manifest = globalToolRegistry.getToolManifest(toolName);
-
-                        const startedAt = Date.now();
-                        const summary = this.buildToolSummary(toolName, toolArgs);
-                        const toolPhaseId = `tool-${toolCall.id || `${iteration}-${toolName}-${startedAt}-${Math.random().toString(36).slice(2, 6)}`}`;
-
-                        const autoApproved = this.isAutoApproved(toolName);
-                        const controlDecision = toolControl.beforeToolExecution(
-                            toolName,
-                            toolArgs,
-                            manifest ?? {
-                                name: toolName,
-                                category: 'read',
-                                riskLevel: 'medium',
-                                requiresApproval: true,
-                                supportsAutoApprove: false,
-                                producesCheckpoint: false,
-                                idempotent: false,
-                                sideEffectScope: 'workspace',
-                            },
-                        );
-                        const controlStateBeforeExecution = toolControl.getState();
-                        this.emitToolControlState(turnRequestId, controlStateBeforeExecution);
-                        if (controlDecision.alerts.length > 0) {
-                            this.emitToolControlNotice(
-                                turnRequestId,
-                                controlDecision.alerts.map((alert) => alert.message).join(' '),
-                                controlDecision.alerts.some((alert) => alert.severity === 'error') ? 'error' : 'warning',
-                            );
-                        }
-                        this.emitTurnEvent(turnRequestId, 'toolActivityStart', {
-                            phaseId: toolPhaseId, toolName, args: toolArgs,
-                            status: 'running', summary, startedAt, toolCallId: toolCall.id,
-                            autoApproved,
-                            manifest,
-                            controlState: controlStateBeforeExecution,
-                        });
-                        if (!controlDecision.allowed) {
-                            const blockedReason = controlDecision.reason || `${toolName} was blocked by tool controls.`;
-                            const blockedResult = JSON.stringify({
-                                __tool: 'tool_control',
-                                status: 'error',
-                                summary: `Blocked ${toolName}`,
-                                toolName,
-                                reason: blockedReason,
-                                alerts: controlDecision.alerts,
-                                recommendedAction: controlStateBeforeExecution.recommendedAction,
-                            });
-                            this.workspaceManager.appendToHistory({
-                                role: 'tool',
-                                content: blockedResult,
-                                tool_call_id: toolCall.id,
-                            });
-                            await this.workspaceManager.persistState();
-                            const blockedState = toolControl.afterToolExecution(toolName, toolArgs, 'blocked', blockedReason);
-                            this.emitToolControlState(turnRequestId, blockedState);
-                            this.emitTurnEvent(turnRequestId, 'toolActivityError', {
-                                phaseId: toolPhaseId,
-                                toolCallId: toolCall.id,
-                                toolName,
-                                status: 'error',
-                                summary: `Blocked ${toolName}`,
-                                rawResult: blockedResult,
-                                startedAt,
-                                finishedAt: Date.now(),
-                                durationMs: Date.now() - startedAt,
-                                manifest,
-                                controlState: blockedState,
-                                errorMessage: blockedReason,
-                            });
-                            activePhaseId = toolPhaseId;
-                            if (controlDecision.stopTurn) {
-                                await this.transitionTurnPhase(turnRequestId, 'awaiting_user', {
-                                    budgetState: this.workspaceManager.estimateTokenCount(),
-                                    activeToolCallIds: [],
-                                });
-                                continueLoop = false;
-                                break;
-                            }
-                            continue;
-                        }
-
-                        // ── Checkpoint before file writes ────────────────────
-                        const checkpoints = await this.createCheckpointsForTool(toolName, toolArgs);
-                        if (checkpoints.length > 0) {
-                            this.emitTurnEvent(turnRequestId, 'checkpointSaved', {
-                                phaseId: toolPhaseId,
-                                checkpoints,
-                                toolName
-                            });
-                        }
-
-                        // P1 FIX: Warn AI if a bg process is already running before starting another
-                        if (toolName === 'run_command' && hasRunningBgProcesses()) {
-                            const running = getRunningBgProcesses();
-                            const names = running.map(p => p.command || p.bgId).join(', ');
-                            // Inject warning into history so AI sees it
-                            this.workspaceManager.appendToHistory({
-                                role: 'tool',
-                                content: `WARNING: There is already a background process running (${names}). Stop it first with killBgProcess before starting a new long-running process. If this is a short command (npm install, tsc, etc.) it is safe to proceed.`,
-                                tool_call_id: toolCall.id,
-                            });
-                        }
-
-                        const result = await globalToolRegistry.executeTool(toolName, toolArgs);
-                        const resultWithCheckpoints = this.attachCheckpointsToToolResult(result, checkpoints);
-                        const normalizedResult = this.normalizeToolResult(
-                            resultWithCheckpoints,
-                            toolName,
-                            summary,
-                            startedAt,
-                            manifest,
-                            controlStateBeforeExecution,
-                        );
-                        const toolControlState = toolControl.afterToolExecution(
-                            toolName,
-                            toolArgs,
-                            normalizedResult.status === 'error' ? 'error' : 'success',
-                            normalizedResult.summary,
-                        );
-                        this.emitToolControlState(turnRequestId, toolControlState);
-
-                        // Tool result history'e compact olarak gönder
-                        // run_command için stdout/stderr'i truncate et — context window'u korur
-                        const historyContent = this.compactToolResult(resultWithCheckpoints, toolName);
-                        this.workspaceManager.appendToHistory({
-                            role: 'tool',
-                            content: historyContent,
-                            tool_call_id: toolCall.id
-                        });
-                        await this.workspaceManager.persistState();
-
-                        if (normalizedResult.status === 'error') {
-                            this.emitTurnEvent(turnRequestId, 'toolActivityError', {
-                                phaseId: toolPhaseId,
-                                toolCallId: toolCall.id,
-                                ...normalizedResult,
-                                manifest,
-                                controlState: toolControlState,
-                            });
-                        } else {
-                            this.emitTurnEvent(turnRequestId, 'toolActivityDone', {
-                                phaseId: toolPhaseId,
-                                toolCallId: toolCall.id,
-                                ...normalizedResult,
-                                manifest,
-                                controlState: toolControlState,
-                            });
-                        }
-
-                        activePhaseId = toolPhaseId;
-
-                        if (toolName === 'task_notes' && typeof toolArgs.todos === 'string') {
-                            // P2 FIX: Duplicate detection — same content = stop loop
-                            const todosContent = toolArgs.todos.trim();
-                            if (todosContent === lastTaskNotesContent) {
-                                // AI is repeating same plan — force stop
-                                continueLoop = false;
-                                this.workspaceManager.appendToHistory({
-                                    role: 'tool',
-                                    content: 'task_notes: Duplicate plan detected. Use attempt_completion to finish.',
-                                    tool_call_id: toolCall.id,
-                                });
-                                break;
-                            }
-                            lastTaskNotesContent = todosContent;
-
-                            this.workspaceManager.updatePlanState(
-                                toolArgs.todos,
-                                typeof toolArgs.summary === 'string' ? toolArgs.summary : ''
-                            );
-                            taskNotesCalledThisLoop = true;
-                            this.emitTurnEvent(turnRequestId, 'todoUpdate', {
-                                todos: toolArgs.todos,
-                                summary: toolArgs.summary || ''
-                            });
-                        }
-
-                        if (toolName === 'attempt_completion') {
-                            // Görev tamamlandı — frontend'e bildir
-                            await this.traceService.finish(turnRequestId, 'completed', {
-                                budgetState: this.workspaceManager.estimateTokenCount(),
-                            });
-                            this.emitCurrentTurnState(turnRequestId);
-                            this.emitTurnEvent(turnRequestId, 'taskComplete', {
-                                result: toolArgs.result || toolArgs.summary || 'Task complete.'
-                            });
-                            continueLoop = false;
-                            break;
-                        }
-
-                        const STOP_TOOLS = ['ask_followup_question', 'ask_followup_questions'];
-                        if (STOP_TOOLS.includes(toolName)) {
-                            await this.transitionTurnPhase(turnRequestId, 'awaiting_user', {
-                                budgetState: this.workspaceManager.estimateTokenCount(),
-                            });
-                            continueLoop = false;
-                            break;
-                        }
-                    }
-                } else {
-                    // ── Final yanıt ───────────────────────────────────────────
-                    const rawFinalContent = response?.message?.content;
-                    const finalContent = typeof rawFinalContent === 'string'
-                        ? rawFinalContent
-                        : rawFinalContent == null
-                            ? (lastContentSnapshot || '')
-                            : JSON.stringify(rawFinalContent);
-                    this.workspaceManager.appendToHistory({ role: 'assistant', content: finalContent });
-                    this.emitTurnEvent(turnRequestId, 'finalResponse', { content: finalContent });
-                    await this.workspaceManager.persistState();
-                    await this.traceService.finish(turnRequestId, 'completed', {
-                        budgetState: this.workspaceManager.estimateTokenCount(),
-                    });
-                    this.emitCurrentTurnState(turnRequestId);
-
-                    // P2 FIX: Plan mode no longer auto-injects "Continue" messages.
-                    // AI must use attempt_completion to signal plan is done.
-                    // Both plan and code mode: finalResponse = stop.
-                    continueLoop = false;
-                }
-            }
-
-            this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
-            this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
-            this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
-            this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
-            this.turnSequenceByRequestId.delete(turnRequestId);
-
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : 'Unknown error';
-            await this.traceService.finish(turnRequestId, 'failed', {
-                error: msg,
-                budgetState: this.workspaceManager.estimateTokenCount(),
-            });
-            this.emitCurrentTurnState(turnRequestId);
-            this.emitTurnEvent(turnRequestId, 'error', { message: msg });
-            this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
-            this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
-            this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
-            this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
-            this.turnSequenceByRequestId.delete(turnRequestId);
+            await this.taskRuntime.runTurn(message, turnRequestId, this.activeAbortController.signal);
         } finally {
+            this.turnSequenceByRequestId.delete(turnRequestId);
             this.activeAbortController = undefined;
         }
     }

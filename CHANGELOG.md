@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.0.49] - 2026-03-13
+### Added
+- `TaskRuntime`, `ToolExecutor`, `ToolPolicyService`, `RuntimeEventBus`, and `MessageStateStore` now form a dedicated runtime layer, so `TaskController` can stay as a facade instead of owning the full agent loop
+- Session history now saves schema-versioned `messageState` and `runtimeSnapshots`, including turn-state, trace, tool-control, and future goal/browser placeholders for safer restore and migration
+- A real `web_search` tool is now registered, backed by a structured DuckDuckGo HTML search provider and a normalized search payload contract
+- New regression tests cover message-state migration, tool executor behavior, and structured web-search parsing/serialization
+
+### Changed
+- The agent loop now runs through the extracted runtime modules while preserving the current webview protocol and tool behavior
+- Tool execution now passes through a policy layer plus handler-based executor, which standardizes validation, checkpoint attachment, normalization, and compact history writes
+- Plan and code modes now explicitly allow `web_search` alongside `web_fetch`
+
+---
+
 ## [0.0.48] - 2026-03-13
 ### Added
 - Tool manifests and per-turn tool control now track risk, repetition, blocked calls, browsing focus, and recommended next actions across the agent loop

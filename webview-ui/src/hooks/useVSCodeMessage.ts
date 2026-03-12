@@ -62,6 +62,7 @@ function buildToolSummaryFromHistory(fnName: string, args: any): string {
     rename_file: 'Move file',
     get_diagnostics: pathBase ? `Diagnose ${pathBase}` : 'Diagnose workspace',
     web_fetch: args?.url ? `Fetch ${args.url}` : 'Web fetch',
+    web_search: args?.query ? `Search ${String(args.query).slice(0, 40)}` : 'Web search',
     create_directory: pathBase ? `Create dir ${pathBase}` : 'Create directory',
     get_file_info: pathBase ? `Info ${pathBase}` : 'File info',
     find_and_replace: pathBase ? `Replace in ${pathBase}` : 'Find & replace',

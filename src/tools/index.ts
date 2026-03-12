@@ -7,6 +7,7 @@ import { GetDiagnosticsTool } from './impl/ProjectTools';
 import { TaskNotesTool, AskFollowupQuestionTool, AskFollowupQuestionsTool, AttemptCompletionTool } from './impl/InteractionTools';
 import {
     WebFetchTool,
+    WebSearchTool,
     GrepCodeTool,
     CreateDirectoryTool,
     GetFileInfoTool,
@@ -34,6 +35,7 @@ globalToolRegistry.registerTool(new DeleteMultipleFilesTool());  // N dosyayı t
 
 // ── Power tools ───────────────────────────────────────────────────────────────
 globalToolRegistry.registerTool(new WebFetchTool());
+globalToolRegistry.registerTool(new WebSearchTool());
 globalToolRegistry.registerTool(new GrepCodeTool());
 globalToolRegistry.registerTool(new CreateDirectoryTool());
 globalToolRegistry.registerTool(new GetFileInfoTool());

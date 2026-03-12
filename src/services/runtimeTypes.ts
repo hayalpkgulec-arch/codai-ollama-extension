@@ -1,5 +1,5 @@
 import type { ProviderId } from './providerCatalog';
-import type { ToolManifest } from '../core/types';
+import type { Message, ToolArtifact, ToolExecutionResult, ToolManifest } from '../core/types';
 
 export interface ContextWindowStats {
     contextTokens: number;
@@ -72,6 +72,16 @@ export interface RetrievalHit {
     title: string;
     preview: string;
     score: number;
+}
+
+export interface SearchResult {
+    title: string;
+    url: string;
+    snippet: string;
+    sourceHost: string;
+    rank: number;
+    fetchedAt: string;
+    queryIntent: string;
 }
 
 export interface WorkspaceMemoryEntry {
@@ -161,4 +171,123 @@ export interface ToolControlDecision {
 export interface ToolCatalogEntry {
     manifest: ToolManifest;
     description: string;
+}
+
+export type ToolFailureClass =
+    | 'none'
+    | 'validation'
+    | 'approval'
+    | 'blocked'
+    | 'execution'
+    | 'provider'
+    | 'abort'
+    | 'timeout';
+
+export interface ToolApprovalRequest {
+    turnId: string;
+    toolCallId: string;
+    toolName: string;
+    args: any;
+    manifest: ToolManifest;
+    autoApproved: boolean;
+}
+
+export interface ToolPolicyDecision {
+    manifest: ToolManifest;
+    autoApproved: boolean;
+    controlDecision: ToolControlDecision;
+    requiresApproval: boolean;
+}
+
+export interface ToolRetryPolicy {
+    maxAttempts: number;
+    backoffMs: number;
+    retryableFailures: ToolFailureClass[];
+}
+
+export interface ToolExecutionContext {
+    turnId: string;
+    toolCallId: string;
+    toolName: string;
+    args: any;
+    manifest: ToolManifest;
+    summary: string;
+    startedAt: number;
+    autoApproved: boolean;
+    controlState: ToolControlState;
+}
+
+export interface ToolResultEnvelope extends ToolExecutionResult {
+    toolCallId: string;
+    historyContent: string;
+    failureClass: ToolFailureClass;
+    controlState?: ToolControlState | null;
+    blocked?: boolean;
+    stopTurn?: boolean;
+    rawPayload?: unknown;
+    [key: string]: unknown;
+}
+
+export interface ToolHandler {
+    canHandle(toolName: string): boolean;
+    validate?(context: ToolExecutionContext): string[];
+    preview?(context: ToolExecutionContext): string;
+    execute(context: ToolExecutionContext): Promise<string>;
+    normalizeResult?(rawResult: string, context: ToolExecutionContext): ToolResultEnvelope;
+    buildArtifacts?(rawResult: string, context: ToolExecutionContext): ToolArtifact[];
+}
+
+export interface GoalControlCheckpoint {
+    id: string;
+    label: string;
+    done: boolean;
+}
+
+export interface GoalControlState {
+    turnId?: string;
+    activeGoal: string;
+    checkpoints: GoalControlCheckpoint[];
+    lastProgressAt?: number;
+    driftWarnings: string[];
+    recoveryHint?: string;
+}
+
+export interface BrowserSessionState {
+    active: boolean;
+    currentUrl?: string;
+    lastAction?: string;
+    artifactCount: number;
+}
+
+export interface MessageStateSnapshot {
+    conversationHistory: Message[];
+    transcriptHistory: Message[];
+    mode: string;
+    model: string;
+    planTodos: string;
+    planSummary: string;
+    compactedContextSummary?: string;
+    lastCompactionAt?: number | null;
+    compactedMessageCount?: number;
+    compactionSnapshots?: CompactionSnapshot[];
+    savedAt: string;
+}
+
+export interface RuntimeSnapshot {
+    capturedAt: string;
+    turnState?: TurnState | null;
+    latestTrace?: LatestTraceSummary | null;
+    toolControlState?: ToolControlState | null;
+    goalControlState?: GoalControlState | null;
+    browserSessionState?: BrowserSessionState | null;
+}
+
+export interface StoredSessionHistory {
+    schemaVersion: number;
+    messages: any[];
+    messageState: MessageStateSnapshot;
+    runtimeSnapshots: RuntimeSnapshot[];
+    browserArtifactsIndex: Array<{ id: string; path: string; createdAt: string }>;
+    goalSnapshots: GoalControlState[];
+    savedAt: string;
 }

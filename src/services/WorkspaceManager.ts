@@ -15,6 +15,7 @@ import { WorkspaceStorage } from './WorkspaceStorage';
 import type {
     CompactionSnapshot,
     ContextPreviewPayload,
+    MessageStateSnapshot,
     RetrievalHit,
     WorkspaceIndexState,
     WorkspaceMemoryEntry,
@@ -340,7 +341,7 @@ export class WorkspaceManager {
 
         if (this.agentMode === 'plan') return [
             'read_file', 'read_multiple_files', 'list_files', 'list_directory_tree',
-            'search_files', 'grep_code', 'get_diagnostics', 'get_file_info', 'web_fetch',
+            'search_files', 'grep_code', 'get_diagnostics', 'get_file_info', 'web_fetch', 'web_search',
             'task_notes', 'ask_followup_questions', 'ask_followup_question',
             'save_plan', 'attempt_completion',
         ];
@@ -350,7 +351,7 @@ export class WorkspaceManager {
             'list_files', 'list_directory_tree',
             'write_file', 'search_files', 'grep_code',
             'run_command', 'delete_file', 'rename_file', 'get_diagnostics',
-            'web_fetch', 'create_directory', 'get_file_info',
+            'web_fetch', 'web_search', 'create_directory', 'get_file_info',
             'find_and_replace', 'append_to_file',
             'ask_followup_question', 'attempt_completion',
         ];
@@ -397,6 +398,22 @@ export class WorkspaceManager {
     public getLatestRetrievalHits() { return [...this.lastRetrievalHits]; }
     public getProviderModelCatalog(providerId: ProviderId) { return [...(this.providerModelCatalogs[providerId] ?? [])]; }
     public getWorkspaceIndex() { return this.workspaceIndex; }
+
+    public getSessionSnapshot(): MessageStateSnapshot {
+        return {
+            conversationHistory: this.normalizeHistory(this.conversationHistory),
+            transcriptHistory: this.normalizeHistory(this.transcriptHistory),
+            mode: this.agentMode,
+            model: this.defaultModel,
+            planTodos: this.planTodos,
+            planSummary: this.planSummary,
+            compactedContextSummary: this.compactedContextSummary,
+            lastCompactionAt: this.lastCompactionAt,
+            compactedMessageCount: this.compactedMessageCount,
+            compactionSnapshots: [...this.compactionSnapshots],
+            savedAt: new Date().toISOString(),
+        };
+    }
 
     public restoreSessionState(state: Partial<PersistedWorkspaceState> & {
         mode?: AgentMode;
