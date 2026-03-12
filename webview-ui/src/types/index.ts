@@ -18,6 +18,89 @@ export interface ContextWindowStats {
   compactedMessageCount: number;
 }
 
+export interface RetrievalHit {
+  id: string;
+  source: 'transcript' | 'snapshot' | 'memory' | 'workspace';
+  title: string;
+  preview: string;
+  score: number;
+}
+
+export interface ContextArtifact {
+  id: string;
+  kind: 'system' | 'recent' | 'compacted' | 'retrieval' | 'memory' | 'workspace';
+  title: string;
+  preview: string;
+  tokenEstimate: number;
+  included: boolean;
+}
+
+export interface ContextPreviewPayload {
+  artifacts: ContextArtifact[];
+  retrievalHits: RetrievalHit[];
+  compactionSnapshotCount: number;
+  workspaceMemoryCount: number;
+}
+
+export type TurnPhase =
+  | 'idle'
+  | 'preflight'
+  | 'llm_request'
+  | 'tool_execution'
+  | 'awaiting_user'
+  | 'completed'
+  | 'failed'
+  | 'aborted';
+
+export interface TurnState {
+  turnId: string;
+  requestId: string;
+  providerId: string;
+  model: string;
+  phase: TurnPhase;
+  iteration: number;
+  startedAt: number;
+  finishedAt?: number;
+  activeToolCallIds: string[];
+  budgetState: ContextWindowStats;
+  error?: string;
+  traceFilePath?: string;
+  recoveredFromPreviousRun?: boolean;
+}
+
+export interface LatestTraceSummary {
+  turnId: string;
+  providerId: string;
+  model: string;
+  phase: TurnPhase;
+  startedAt: number;
+  finishedAt?: number;
+  traceFilePath: string;
+  eventCount: number;
+  error?: string;
+}
+
+export interface ProviderCapability {
+  id: string;
+  label: string;
+  baseUrl: string;
+  requiresApiKey: boolean;
+  protocol: 'openai' | 'ollama';
+  modelsEndpoint?: string;
+  docsUrl: string;
+  keySignupUrl: string;
+  isLocal: boolean;
+  badge?: string;
+  supportsTools: boolean;
+  supportsStreaming: boolean;
+  supportsReasoning: boolean;
+  supportsVision: boolean;
+  maxContextTokens: number;
+  defaultModel: string;
+  fallbackModels: string[];
+  defaultModels: Array<{ id: string; label: string; tag: 'cloud' | 'local' }>;
+}
+
 // ── Auto-approve config ───────────────────────────────────────────────────────
 export interface AutoApproveConfig {
   read_file: boolean;

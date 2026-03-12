@@ -194,6 +194,10 @@ export function useHistory() {
     vscode.postMessage({ type: 'getSessions' });
   }, []);
 
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
   // ── Get grouped sessions ──────────────────────────────────────────────────
   const getGroupedSessions = useCallback((query?: string): Array<{
     group: DateGroup;

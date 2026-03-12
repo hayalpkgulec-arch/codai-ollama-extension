@@ -1,0 +1,547 @@
+{
+  "providers": [
+    {
+      "id": "ollama",
+      "label": "Ollama",
+      "baseUrl": "http://localhost:11434",
+      "requiresApiKey": false,
+      "protocol": "ollama",
+      "modelsEndpoint": "/api/tags",
+      "docsUrl": "https://ollama.com",
+      "keySignupUrl": "",
+      "isLocal": true,
+      "badge": "Local",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": false,
+      "maxContextTokens": 128000,
+      "defaultModel": "qwen2.5-coder:32b",
+      "fallbackModels": [
+        "qwen2.5-coder:32b",
+        "codestral:22b",
+        "llama3.3:70b"
+      ],
+      "defaultModels": [
+        {
+          "id": "qwen2.5-coder:32b",
+          "label": "Qwen2.5 Coder 32B",
+          "tag": "local",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "codestral:22b",
+          "label": "Codestral 22B",
+          "tag": "local",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 96000
+        },
+        {
+          "id": "llama3.3:70b",
+          "label": "Llama 3.3 70B",
+          "tag": "local",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "mistral:7b",
+          "label": "Mistral 7B",
+          "tag": "local",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 64000
+        },
+        {
+          "id": "deepseek-r1:14b",
+          "label": "DeepSeek R1 14B",
+          "tag": "local",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        }
+      ]
+    },
+    {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "requiresApiKey": true,
+      "protocol": "openai",
+      "modelsEndpoint": "/models",
+      "docsUrl": "https://openrouter.ai/docs",
+      "keySignupUrl": "https://openrouter.ai/keys",
+      "isLocal": false,
+      "badge": "Free models",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "maxContextTokens": 128000,
+      "defaultModel": "deepseek/deepseek-r1:free",
+      "fallbackModels": [
+        "deepseek/deepseek-r1:free",
+        "deepseek/deepseek-chat-v3-5:free",
+        "meta-llama/llama-3.3-70b-instruct:free"
+      ],
+      "defaultModels": [
+        {
+          "id": "deepseek/deepseek-r1:free",
+          "label": "DeepSeek R1 (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "deepseek/deepseek-chat-v3-5:free",
+          "label": "DeepSeek V3.5 (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "meta-llama/llama-3.3-70b-instruct:free",
+          "label": "Llama 3.3 70B (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "qwen/qwen3-235b-a22b:free",
+          "label": "Qwen3 235B (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "microsoft/phi-4:free",
+          "label": "Phi-4 (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "google/gemma-3-27b-it:free",
+          "label": "Gemma 3 27B (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": true,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "deepseek/deepseek-r1",
+          "label": "DeepSeek R1",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "openai/gpt-4o",
+          "label": "GPT-4o",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "anthropic/claude-3.5-sonnet",
+          "label": "Claude 3.5 Sonnet",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 200000
+        }
+      ]
+    },
+    {
+      "id": "groq",
+      "label": "Groq",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "requiresApiKey": true,
+      "protocol": "openai",
+      "modelsEndpoint": "/models",
+      "docsUrl": "https://console.groq.com/docs",
+      "keySignupUrl": "https://console.groq.com/keys",
+      "isLocal": false,
+      "badge": "Very Fast",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": false,
+      "maxContextTokens": 128000,
+      "defaultModel": "llama-3.3-70b-versatile",
+      "fallbackModels": [
+        "llama-3.3-70b-versatile",
+        "llama-3.1-8b-instant",
+        "qwen3-32b"
+      ],
+      "defaultModels": [
+        {
+          "id": "llama-3.3-70b-versatile",
+          "label": "Llama 3.3 70B",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "llama-3.1-8b-instant",
+          "label": "Llama 3.1 8B (Fast)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "llama-4-scout-17b-16e-instruct",
+          "label": "Llama 4 Scout 17B",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "qwen3-32b",
+          "label": "Qwen3 32B",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "deepseek-r1-distill-llama-70b",
+          "label": "DeepSeek R1 70B",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        }
+      ]
+    },
+    {
+      "id": "gemini",
+      "label": "Google Gemini",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai",
+      "requiresApiKey": true,
+      "protocol": "openai",
+      "docsUrl": "https://ai.google.dev/gemini-api/docs",
+      "keySignupUrl": "https://aistudio.google.com/apikey",
+      "isLocal": false,
+      "badge": "1M context",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "maxContextTokens": 1000000,
+      "defaultModel": "gemini-2.5-flash-preview-05-20",
+      "fallbackModels": [
+        "gemini-2.5-flash-preview-05-20",
+        "gemini-2.0-flash",
+        "gemini-2.5-pro-preview-06-05"
+      ],
+      "defaultModels": [
+        {
+          "id": "gemini-2.5-flash-preview-05-20",
+          "label": "Gemini 2.5 Flash (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 1000000
+        },
+        {
+          "id": "gemini-2.0-flash",
+          "label": "Gemini 2.0 Flash (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 1000000
+        },
+        {
+          "id": "gemini-2.0-flash-lite",
+          "label": "Gemini 2.0 Flash Lite (Free)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": true,
+          "maxContextTokens": 1000000
+        },
+        {
+          "id": "gemini-2.5-pro-preview-06-05",
+          "label": "Gemini 2.5 Pro",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 1000000
+        }
+      ]
+    },
+    {
+      "id": "cerebras",
+      "label": "Cerebras",
+      "baseUrl": "https://api.cerebras.ai/v1",
+      "requiresApiKey": true,
+      "protocol": "openai",
+      "modelsEndpoint": "/models",
+      "docsUrl": "https://inference-docs.cerebras.ai",
+      "keySignupUrl": "https://cloud.cerebras.ai",
+      "isLocal": false,
+      "badge": "2100 TPS",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": false,
+      "maxContextTokens": 128000,
+      "defaultModel": "llama3.1-8b",
+      "fallbackModels": [
+        "llama3.1-8b",
+        "gpt-oss-120b",
+        "qwen-3-235b-a22b-instruct-2507"
+      ],
+      "defaultModels": [
+        {
+          "id": "llama3.1-8b",
+          "label": "Llama 3.1 8B",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "gpt-oss-120b",
+          "label": "GPT OSS 120B",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "qwen-3-235b-a22b-instruct-2507",
+          "label": "Qwen3 235B (preview)",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        }
+      ]
+    },
+    {
+      "id": "mistral",
+      "label": "Mistral AI",
+      "baseUrl": "https://api.mistral.ai/v1",
+      "requiresApiKey": true,
+      "protocol": "openai",
+      "modelsEndpoint": "/models",
+      "docsUrl": "https://docs.mistral.ai",
+      "keySignupUrl": "https://console.mistral.ai",
+      "isLocal": false,
+      "badge": "Codestral",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": false,
+      "maxContextTokens": 128000,
+      "defaultModel": "codestral-latest",
+      "fallbackModels": [
+        "codestral-latest",
+        "mistral-small-latest",
+        "mistral-medium-latest"
+      ],
+      "defaultModels": [
+        {
+          "id": "mistral-small-latest",
+          "label": "Mistral Small",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "codestral-latest",
+          "label": "Codestral",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 256000
+        },
+        {
+          "id": "mistral-medium-latest",
+          "label": "Mistral Medium",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": false,
+          "maxContextTokens": 128000
+        },
+        {
+          "id": "open-mistral-7b",
+          "label": "Mistral 7B (Free)",
+          "tag": "cloud",
+          "supportsTools": false,
+          "supportsStreaming": true,
+          "supportsReasoning": false,
+          "supportsVision": false,
+          "maxContextTokens": 64000
+        }
+      ]
+    },
+    {
+      "id": "puter",
+      "label": "Puter",
+      "baseUrl": "https://api.puter.com/puterai/openai/v1",
+      "requiresApiKey": true,
+      "protocol": "openai",
+      "modelsEndpoint": "/models",
+      "docsUrl": "https://developer.puter.com/tutorials/use-cline-with-puter/",
+      "keySignupUrl": "https://developer.puter.com/tutorials/use-cline-with-puter/",
+      "isLocal": false,
+      "badge": "Claude via Puter",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "maxContextTokens": 200000,
+      "defaultModel": "claude-sonnet-4-6",
+      "fallbackModels": [
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+        "claude-haiku-4-5"
+      ],
+      "defaultModels": [
+        {
+          "id": "claude-sonnet-4-6",
+          "label": "Claude Sonnet 4.6",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 200000
+        },
+        {
+          "id": "claude-opus-4-6",
+          "label": "Claude Opus 4.6",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 200000
+        },
+        {
+          "id": "claude-sonnet-4-5",
+          "label": "Claude Sonnet 4.5",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 200000
+        },
+        {
+          "id": "claude-opus-4-5",
+          "label": "Claude Opus 4.5",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 200000
+        },
+        {
+          "id": "claude-haiku-4-5",
+          "label": "Claude Haiku 4.5",
+          "tag": "cloud",
+          "supportsTools": true,
+          "supportsStreaming": true,
+          "supportsReasoning": true,
+          "supportsVision": true,
+          "maxContextTokens": 200000
+        }
+      ]
+    },
+    {
+      "id": "custom",
+      "label": "Custom / Self-hosted",
+      "baseUrl": "http://localhost:8080/v1",
+      "requiresApiKey": false,
+      "protocol": "openai",
+      "docsUrl": "",
+      "keySignupUrl": "",
+      "isLocal": true,
+      "badge": "OpenAI-compat",
+      "supportsTools": true,
+      "supportsStreaming": true,
+      "supportsReasoning": true,
+      "supportsVision": true,
+      "maxContextTokens": 128000,
+      "defaultModel": "",
+      "fallbackModels": [],
+      "defaultModels": []
+    }
+  ]
+}

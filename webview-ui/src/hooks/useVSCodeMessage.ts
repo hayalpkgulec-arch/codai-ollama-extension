@@ -8,6 +8,9 @@ import type {
   PlanSavedPayload,
   ProviderSavedConfig,
   ContextWindowStats,
+  ContextPreviewPayload,
+  LatestTraceSummary,
+  TurnState,
 } from '../types';
 import { vscode } from '../vscode';
 
@@ -147,6 +150,11 @@ export function useVSCodeMessage() {
   const [planSaved, setPlanSaved] = useState<PlanSavedPayload | null>(null);
   const [taskDone, setTaskDone] = useState<string | null>(null);
   const [tokenCount, setTokenCount] = useState<ContextWindowStats | null>(null);
+  const [contextPreview, setContextPreview] = useState<ContextPreviewPayload | null>(null);
+  const [latestTrace, setLatestTrace] = useState<LatestTraceSummary | null>(null);
+  const [turnState, setTurnState] = useState<TurnState | null>(null);
+  const [preflightNotice, setPreflightNotice] = useState<{ severity: 'warning' | 'error'; warnings: string[]; errors: string[] } | null>(null);
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [contextCompactionNotice, setContextCompactionNotice] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   // BUG 8 FIX: initialModel backend'den restore edilir
@@ -211,6 +219,15 @@ export function useVSCodeMessage() {
                 : {},
             });
           }
+          setContextPreview(msg.contextPreview || null);
+          setLatestTrace(msg.latestTrace || null);
+          setTurnState(msg.turnState || null);
+          setPreflightNotice(null);
+          setResumeNotice(
+            msg.turnState?.recoveredFromPreviousRun
+              ? 'Previous turn was interrupted. Its state was recovered locally so you can inspect the trace safely.'
+              : null
+          );
           if (typeof msg.planTodos === 'string' && msg.planTodos.trim()) {
             setTodoItems(msg.planTodos);
           }
@@ -222,10 +239,32 @@ export function useVSCodeMessage() {
           setIsProcessing(true);
           setIsStreaming(false);
           setContextCompactionNotice(null);
+          setPreflightNotice(null);
+          setResumeNotice(null);
           setTaskDone(null);
           setPendingQuestion(null);
           setPendingQuestions(null);
           setIterationCount(0);
+          setTurnState((prev) => ({
+            turnId: msg.requestId || prev?.turnId || `turn-${Date.now()}`,
+            requestId: msg.requestId || prev?.requestId || `turn-${Date.now()}`,
+            providerId: prev?.providerId || providerInfo.providerId,
+            model: prev?.model || initialModel || '',
+            phase: 'preflight',
+            iteration: 0,
+            startedAt: msg.startedAt || Date.now(),
+            activeToolCallIds: [],
+            budgetState: prev?.budgetState || {
+              contextTokens: tokenCount?.contextTokens ?? 0,
+              contextChars: tokenCount?.contextChars ?? 0,
+              maxContextTokens: tokenCount?.maxContextTokens ?? 0,
+              tokensLeft: tokenCount?.tokensLeft ?? 0,
+              percentUsed: tokenCount?.percentUsed ?? 0,
+              autoCompactEnabled: tokenCount?.autoCompactEnabled ?? true,
+              lastCompactionAt: tokenCount?.lastCompactionAt ?? null,
+              compactedMessageCount: tokenCount?.compactedMessageCount ?? 0,
+            },
+          }));
           setMessages(prev => [
             ...prev,
             {
@@ -451,6 +490,13 @@ export function useVSCodeMessage() {
         case 'turnDone':
           setIsProcessing(false);
           setIsStreaming(false);
+          setTurnState((prev) => prev ? {
+            ...prev,
+            phase: prev.phase === 'failed' || prev.phase === 'aborted' || prev.phase === 'awaiting_user'
+              ? prev.phase
+              : 'completed',
+            finishedAt: msg.finishedAt || Date.now(),
+          } : prev);
           // Tüm açık thinking segment'leri kapat
           setMessages(prev => prev.map(msg => ({
             ...msg,
@@ -467,6 +513,12 @@ export function useVSCodeMessage() {
         case 'error':
           setIsProcessing(false);
           setIsStreaming(false);
+          setTurnState((prev) => prev ? {
+            ...prev,
+            phase: 'failed',
+            error: msg.message as string,
+            finishedAt: Date.now(),
+          } : prev);
           setMessages(prev => {
             const last = prev[prev.length - 1];
             if (last?.role === 'assistant') {
@@ -479,6 +531,8 @@ export function useVSCodeMessage() {
         // ── Session loaded (restore from history) ───────────────────────
         case 'sessionLoaded':
           setContextCompactionNotice(null);
+          setPreflightNotice(null);
+          setResumeNotice(null);
           if (Array.isArray(msg.messages) && msg.messages.length > 0) {
             // Messages are already in UI segment format (saved by App.tsx)
             const restored = msg.messages.map((m: any, i: number) => ({
@@ -499,6 +553,7 @@ export function useVSCodeMessage() {
           setPendingQuestion(null);
           setPendingQuestions(null);
           setPlanSaved(null);
+          setTurnState(null);
           setIterationCount(0);
           bumpScroll();
           break;
@@ -506,6 +561,11 @@ export function useVSCodeMessage() {
         case 'clearHistory':
           clearMessages();
           setContextCompactionNotice(null);
+          setContextPreview(null);
+          setLatestTrace(null);
+          setTurnState(null);
+          setPreflightNotice(null);
+          setResumeNotice(null);
           setTodoItems('');
           setPendingQuestion(null);
           setPendingQuestions(null);
@@ -576,6 +636,52 @@ export function useVSCodeMessage() {
             lastCompactionSeenRef.current = msg.lastCompactionAt;
             setContextCompactionNotice('Automatically compacting context');
           }
+          setTurnState((prev) => prev ? {
+            ...prev,
+            budgetState: {
+              contextTokens: msg.contextTokens ?? 0,
+              contextChars: msg.contextChars ?? 0,
+              maxContextTokens: msg.maxContextTokens ?? 0,
+              tokensLeft: msg.tokensLeft ?? 0,
+              percentUsed: msg.percentUsed ?? 0,
+              autoCompactEnabled: msg.autoCompactEnabled ?? true,
+              lastCompactionAt: msg.lastCompactionAt ?? null,
+              compactedMessageCount: msg.compactedMessageCount ?? 0,
+            },
+          } : prev);
+          break;
+
+        case 'contextPreview':
+          setContextPreview(msg?.artifacts ? msg as ContextPreviewPayload : null);
+          break;
+
+        case 'turnTraceAvailable':
+          if (msg?.traceFilePath) {
+            setLatestTrace(msg as LatestTraceSummary);
+          }
+          break;
+
+        case 'turnState':
+          if (msg?.turnId) {
+            setTurnState(msg as TurnState);
+          }
+          break;
+
+        case 'preflightWarning':
+          setPreflightNotice({
+            severity: msg.severity === 'error' ? 'error' : 'warning',
+            warnings: Array.isArray(msg.warnings) ? msg.warnings : [],
+            errors: Array.isArray(msg.errors) ? msg.errors : [],
+          });
+          break;
+
+        case 'turnResumed':
+          if (typeof msg.message === 'string' && msg.message.trim()) {
+            setResumeNotice(msg.message);
+          }
+          if (msg.turnState?.turnId) {
+            setTurnState(msg.turnState as TurnState);
+          }
           break;
 
         // ── BUG 10 FIX: Aktif dosya context yanıtı ──────────────────────
@@ -592,7 +698,7 @@ export function useVSCodeMessage() {
 
         // Provider models (ProviderSettings componentinden tetiklenir)
         case 'providerModels':
-          if (Array.isArray(msg.models) && msg.models.length > 0) {
+          if (msg.providerId === 'ollama' && Array.isArray(msg.models) && msg.models.length > 0) {
             setOllamaModels(msg.models);
           }
           break;
@@ -619,7 +725,13 @@ export function useVSCodeMessage() {
 
     window.addEventListener('message', handle);
     return () => window.removeEventListener('message', handle);
-  }, [clearMessages, bumpScroll]);
+  }, [
+    bumpScroll,
+    clearMessages,
+    initialModel,
+    providerInfo.providerId,
+    tokenCount,
+  ]);
 
   useEffect(() => {
     if (!contextCompactionNotice) return;
@@ -654,6 +766,11 @@ export function useVSCodeMessage() {
     planSaved, setPlanSaved,
     taskDone, setTaskDone,
     tokenCount,
+    contextPreview,
+    latestTrace,
+    turnState,
+    preflightNotice,
+    resumeNotice,
     contextCompactionNotice,
     isStreaming,
     initialModel,

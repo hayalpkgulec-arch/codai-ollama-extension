@@ -16,32 +16,11 @@ import {
 import { vscode } from '../../vscode';
 import { AutoApproveSettings } from './AutoApproveSettings';
 import type { AutoApproveConfig, ProviderSavedConfig } from '../../types';
-
-export type ProviderId =
-    | 'ollama'
-    | 'openrouter'
-    | 'groq'
-    | 'gemini'
-    | 'cerebras'
-    | 'mistral'
-    | 'puter'
-    | 'custom';
-
-export interface ProviderDef {
-    id: ProviderId;
-    label: string;
-    defaultBaseUrl: string;
-    requiresApiKey: boolean;
-    isLocal: boolean;
-    keySignupUrl: string;
-    docsUrl: string;
-    badge?: string;
-    defaultModels: Array<{ id: string; label: string }>;
-    credentialLabel?: string;
-    credentialPlaceholder?: string;
-    credentialHint?: string;
-    credentialActionLabel?: string;
-}
+import {
+    PROVIDERS as SHARED_PROVIDERS,
+    type ProviderCapability,
+    type ProviderId,
+} from '../../catalog/providerCatalog';
 
 interface ProviderDraft {
     apiKey: string;
@@ -49,136 +28,28 @@ interface ProviderDraft {
     baseUrl: string;
 }
 
-export const PROVIDERS: ProviderDef[] = [
-    {
-        id: 'ollama',
-        label: 'Ollama',
-        defaultBaseUrl: 'http://localhost:11434',
-        requiresApiKey: false,
-        isLocal: true,
-        keySignupUrl: '',
-        docsUrl: 'https://ollama.com',
-        badge: 'Local',
-        defaultModels: [
-            { id: 'qwen2.5-coder:32b', label: 'Qwen2.5 Coder 32B' },
-            { id: 'codestral:22b', label: 'Codestral 22B' },
-            { id: 'llama3.3:70b', label: 'Llama 3.3 70B' },
-            { id: 'mistral:7b', label: 'Mistral 7B' },
-            { id: 'deepseek-r1:14b', label: 'DeepSeek R1 14B' },
-        ],
-    },
-    {
-        id: 'openrouter',
-        label: 'OpenRouter',
-        defaultBaseUrl: 'https://openrouter.ai/api/v1',
-        requiresApiKey: true,
-        isLocal: false,
-        keySignupUrl: 'https://openrouter.ai/keys',
-        docsUrl: 'https://openrouter.ai/docs',
-        badge: 'Free models',
-        defaultModels: [
-            { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 (Free)' },
-            { id: 'deepseek/deepseek-chat-v3-5:free', label: 'DeepSeek V3.5 (Free)' },
-            { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)' },
-            { id: 'qwen/qwen3-235b-a22b:free', label: 'Qwen3 235B (Free)' },
-            { id: 'microsoft/phi-4:free', label: 'Phi-4 (Free)' },
-        ],
-    },
-    {
-        id: 'groq',
-        label: 'Groq',
-        defaultBaseUrl: 'https://api.groq.com/openai/v1',
-        requiresApiKey: true,
-        isLocal: false,
-        keySignupUrl: 'https://console.groq.com/keys',
-        docsUrl: 'https://console.groq.com/docs',
-        badge: 'Very Fast',
-        defaultModels: [
-            { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
-            { id: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B (Fast)' },
-            { id: 'llama-4-scout-17b-16e-instruct', label: 'Llama 4 Scout' },
-            { id: 'qwen3-32b', label: 'Qwen3 32B' },
-        ],
-    },
-    {
-        id: 'gemini',
-        label: 'Google Gemini',
-        defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-        requiresApiKey: true,
-        isLocal: false,
-        keySignupUrl: 'https://aistudio.google.com/apikey',
-        docsUrl: 'https://ai.google.dev/gemini-api/docs',
-        badge: '1M context',
-        defaultModels: [
-            { id: 'gemini-2.5-flash-preview-05-20', label: 'Gemini 2.5 Flash (Free)' },
-            { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (Free)' },
-            { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite (Free)' },
-            { id: 'gemini-2.5-pro-preview-06-05', label: 'Gemini 2.5 Pro' },
-        ],
-    },
-    {
-        id: 'cerebras',
-        label: 'Cerebras',
-        defaultBaseUrl: 'https://api.cerebras.ai/v1',
-        requiresApiKey: true,
-        isLocal: false,
-        keySignupUrl: 'https://cloud.cerebras.ai',
-        docsUrl: 'https://cloud.cerebras.ai',
-        badge: '2100 TPS',
-        defaultModels: [
-            { id: 'llama3.1-8b', label: 'Llama 3.1 8B' },
-            { id: 'gpt-oss-120b', label: 'GPT OSS 120B' },
-            { id: 'qwen-3-235b-a22b-instruct-2507', label: 'Qwen3 235B (preview)' },
-        ],
-    },
-    {
-        id: 'mistral',
-        label: 'Mistral AI',
-        defaultBaseUrl: 'https://api.mistral.ai/v1',
-        requiresApiKey: true,
-        isLocal: false,
-        keySignupUrl: 'https://console.mistral.ai',
-        docsUrl: 'https://docs.mistral.ai',
-        badge: 'Codestral',
-        defaultModels: [
-            { id: 'mistral-small-latest', label: 'Mistral Small' },
-            { id: 'codestral-latest', label: 'Codestral' },
-            { id: 'open-mistral-7b', label: 'Mistral 7B (Free)' },
-        ],
-    },
-    {
-        id: 'puter',
-        label: 'Puter',
-        defaultBaseUrl: 'https://api.puter.com/puterai/openai/v1',
-        requiresApiKey: true,
-        isLocal: false,
-        keySignupUrl: 'https://developer.puter.com/tutorials/use-cline-with-puter/',
-        docsUrl: 'https://developer.puter.com/tutorials/use-cline-with-puter/',
-        badge: 'Claude via Puter',
-        defaultModels: [
-            { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-            { id: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
-            { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-            { id: 'claude-opus-4-5', label: 'Claude Opus 4.5' },
-            { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
-        ],
+type ProviderDef = ProviderCapability & {
+    defaultBaseUrl: string;
+    credentialLabel?: string;
+    credentialPlaceholder?: string;
+    credentialHint?: string;
+    credentialActionLabel?: string;
+};
+
+const UI_PROVIDER_OVERRIDES: Partial<Record<ProviderId, Pick<ProviderDef, 'credentialLabel' | 'credentialPlaceholder' | 'credentialHint' | 'credentialActionLabel'>>> = {
+    puter: {
         credentialLabel: 'Auth Token',
         credentialPlaceholder: 'Paste your Puter auth token',
         credentialHint: "Use your Puter auth token. CodAI talks to Puter's OpenAI-compatible endpoint, so Claude works with the existing tool loop.",
         credentialActionLabel: 'Open Puter guide',
     },
-    {
-        id: 'custom',
-        label: 'Custom / Self-hosted',
-        defaultBaseUrl: 'http://localhost:8080/v1',
-        requiresApiKey: false,
-        isLocal: true,
-        keySignupUrl: '',
-        docsUrl: '',
-        badge: 'OpenAI-compat',
-        defaultModels: [],
-    },
-];
+};
+
+export const PROVIDERS: ProviderDef[] = SHARED_PROVIDERS.map((provider) => ({
+    ...provider,
+    defaultBaseUrl: provider.baseUrl,
+    ...UI_PROVIDER_OVERRIDES[provider.id],
+}));
 
 interface ProviderSettingsProps {
     currentProviderId: ProviderId;

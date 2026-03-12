@@ -4,14 +4,21 @@ import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
 import { LLMService } from '../services/LLMService';
 import { WorkspaceManager } from '../services/WorkspaceManager';
-import { PROVIDER_DEFS } from '../services/providers';
+import { PROVIDER_DEFS, listProviderCapabilities, type ProviderId } from '../services/providers';
 import { globalToolRegistry } from '../tools/index';
 import { buildEnvironmentDetails } from './SystemPrompts';
 import { getCodaiTerminal, hasRunningBgProcesses, getRunningBgProcesses, killBackgroundProcess } from '../integrations/terminal/CodaiTerminalManager';
 import { CheckpointManager } from '../integrations/checkpoints/CheckpointManager';
+import { WorkspaceStorage } from '../services/WorkspaceStorage';
+import { ProviderPreflight } from '../services/ProviderPreflight';
+import { TurnTraceService } from '../services/TurnTraceService';
+import type { TurnPhase } from '../services/runtimeTypes';
 
 export class TaskController {
     private _view?: vscode.Webview;
+    private readonly storage: WorkspaceStorage;
+    private readonly preflight = new ProviderPreflight();
+    private readonly traceService: TurnTraceService;
     private llmService: LLMService;
     private workspaceManager: WorkspaceManager;
     private checkpointManager?: CheckpointManager;
@@ -25,7 +32,9 @@ export class TaskController {
         ollamaUrl: string,
         defaultModel: string
     ) {
-        this.workspaceManager = new WorkspaceManager(_extensionContext, defaultModel, ollamaUrl);
+        this.storage = new WorkspaceStorage(_extensionContext);
+        this.traceService = new TurnTraceService(this.storage);
+        this.workspaceManager = new WorkspaceManager(_extensionContext, this.storage, defaultModel, ollamaUrl);
         this.checkpointManager = new CheckpointManager(_extensionContext);
         const ps = this.workspaceManager.getProviderState();
         this.llmService = new LLMService({
@@ -91,7 +100,9 @@ export class TaskController {
         baseUrl?: string;
     }): Promise<Array<{ id: string; label: string }>> {
         if (!options?.providerId) {
-            return this.llmService.fetchModels();
+            const models = await this.llmService.fetchModels();
+            this.workspaceManager.setProviderModelCatalog(this.workspaceManager.getProviderState().providerId, models);
+            return models;
         }
 
         const providerId = options.providerId as keyof typeof PROVIDER_DEFS;
@@ -129,7 +140,9 @@ export class TaskController {
             model: this.workspaceManager.getDefaultModel(),
         });
 
-        return previewService.fetchModels();
+        const models = await previewService.fetchModels();
+        this.workspaceManager.setProviderModelCatalog(providerId, models);
+        return models;
     }
 
     public getLLMKeyCount(): number { return this.llmService.getKeyCount(); }
@@ -165,7 +178,9 @@ export class TaskController {
     private readonly SESSION_STATE_KEY = 'codai_sessions_v1';
 
     public async getSessions(): Promise<any[]> {
-        return this._extensionContext.globalState.get<any[]>(this.SESSION_STATE_KEY) ?? [];
+        return this.storage.readSessionIndex<any[]>(
+            this._extensionContext.globalState.get<any[]>(this.SESSION_STATE_KEY) ?? []
+        );
     }
 
     public async upsertSessionMeta(session: any): Promise<void> {
@@ -173,8 +188,9 @@ export class TaskController {
         const idx = sessions.findIndex(s => s.id === session.id);
         if (idx >= 0) sessions[idx] = session;
         else sessions.unshift(session);
-        // Keep max 100
-        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, sessions.slice(0, 100));
+        const limited = sessions.slice(0, 100);
+        await this.storage.writeSessionIndex(limited);
+        await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, limited);
     }
 
     public async updateSessionMeta(sessionId: string, updates: any): Promise<void> {
@@ -182,6 +198,7 @@ export class TaskController {
         const idx = sessions.findIndex(s => s.id === sessionId);
         if (idx >= 0) {
             sessions[idx] = { ...sessions[idx], ...updates, updatedAt: new Date().toISOString() };
+            await this.storage.writeSessionIndex(sessions);
             await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, sessions);
         }
     }
@@ -192,21 +209,60 @@ export class TaskController {
 
     public async saveSessionHistory(sessionId: string, messages: any[]): Promise<void> {
         const key = `codai_session_history_${sessionId}`;
-        await this._extensionContext.globalState.update(key, messages);
+        const payload = {
+            messages,
+            transcriptHistory: this.workspaceManager.getTranscriptHistory(),
+            conversationHistory: this.workspaceManager.getConversationHistory(),
+            mode: this.workspaceManager.getMode(),
+            model: this.workspaceManager.getDefaultModel(),
+            planTodos: this.workspaceManager.getPlanTodos(),
+            planSummary: this.workspaceManager.getPlanSummary(),
+            savedAt: new Date().toISOString(),
+        };
+        await this.storage.writeSessionHistory(sessionId, payload);
+        await this._extensionContext.globalState.update(key, payload);
     }
 
     public async loadSession(sessionId: string): Promise<void> {
         if (!this._view) return;
         const key = `codai_session_history_${sessionId}`;
-        const messages = this._extensionContext.globalState.get<any[]>(key) ?? [];
+        const stored = this.storage.readSessionHistory<any>(
+            sessionId,
+            this._extensionContext.globalState.get<any>(key) ?? []
+        );
+        const messages = Array.isArray(stored)
+            ? stored
+            : (Array.isArray(stored?.messages) ? stored.messages : []);
         const sessions = await this.getSessions();
         const meta = sessions.find(s => s.id === sessionId);
+        if (stored && !Array.isArray(stored)) {
+            this.workspaceManager.restoreSessionState({
+                transcriptHistory: Array.isArray(stored.transcriptHistory) ? stored.transcriptHistory : [],
+                conversationHistory: Array.isArray(stored.conversationHistory) ? stored.conversationHistory : [],
+                mode: stored.mode || meta?.mode,
+                model: stored.model || meta?.model,
+                planTodos: typeof stored.planTodos === 'string' ? stored.planTodos : '',
+                planSummary: typeof stored.planSummary === 'string' ? stored.planSummary : '',
+            });
+        } else {
+            this.workspaceManager.clearHistory();
+            if (meta?.mode) this.workspaceManager.setMode(meta.mode);
+            if (typeof meta?.model === 'string' && meta.model) this.workspaceManager.changeModel(meta.model);
+        }
         this._view.postMessage({
             type: 'sessionLoaded',
             sessionId,
             messages,
             mode: meta?.mode ?? 'code',
             title: meta?.title ?? 'Chat',
+        });
+        this._view.postMessage({
+            type: 'tokenCount',
+            ...this.workspaceManager.estimateTokenCount(),
+        });
+        this._view.postMessage({
+            type: 'contextPreview',
+            ...(this.workspaceManager.getContextPreview() ?? {}),
         });
     }
 
@@ -252,9 +308,11 @@ export class TaskController {
     public async deleteSession(sessionId: string): Promise<void> {
         const sessions = await this.getSessions();
         const filtered = sessions.filter((s: any) => s.id !== sessionId);
+        await this.storage.writeSessionIndex(filtered);
         await this._extensionContext.globalState.update(this.SESSION_STATE_KEY, filtered);
         // Also delete the history
         const histKey = `codai_session_history_${sessionId}`;
+        await this.storage.deleteSessionHistory(sessionId);
         await this._extensionContext.globalState.update(histKey, undefined);
     }
 
@@ -267,12 +325,18 @@ export class TaskController {
         const ps = this.workspaceManager.getProviderState();
         const providerConfigs = this.workspaceManager.getProviderConfigs();
         const tokenInfo = this.workspaceManager.estimateTokenCount();
+        const latestTrace = this.traceService.getLatestSummary();
+        const currentTurnState = this.traceService.getCurrentTurnState();
         this._view.postMessage({
             type: 'initialState',
             history: historyForUi,
             mode: this.workspaceManager.getMode(),
             model: this.workspaceManager.getDefaultModel(),
             tokenCount: tokenInfo,
+            contextPreview: this.workspaceManager.getContextPreview(),
+            latestTrace,
+            turnState: currentTurnState,
+            providerCapabilities: listProviderCapabilities(),
             // Provider state — frontend settings panelini restore eder
             provider: {
                 providerId: ps.providerId,
@@ -295,6 +359,13 @@ export class TaskController {
             planTodos: this.workspaceManager.getPlanTodos(),
             planSummary: this.workspaceManager.getPlanSummary(),
         });
+        if (currentTurnState?.recoveredFromPreviousRun) {
+            this._view.postMessage({
+                type: 'turnResumed',
+                message: 'Previous turn was interrupted. Review the recovered state or open the latest local trace.',
+                turnState: currentTurnState,
+            });
+        }
     }
 
     private nextTurnSeq(requestId: string): number {
@@ -319,6 +390,49 @@ export class TaskController {
             payload: safePayload,
             ...safePayload
         });
+        const currentTurnState = this.traceService.getCurrentTurnState();
+        if (currentTurnState?.turnId === requestId) {
+            void this.traceService.record(
+                requestId,
+                currentTurnState.phase,
+                type,
+                this.sanitizeTracePayload(safePayload)
+            );
+        }
+    }
+
+    private sanitizeTracePayload(payload: Record<string, unknown>, depth = 0): Record<string, unknown> {
+        if (depth > 3) return {};
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(payload)) {
+            if (value == null || typeof value === 'number' || typeof value === 'boolean') {
+                result[key] = value;
+            } else if (typeof value === 'string') {
+                result[key] = value.length > 400 ? `${value.slice(0, 400)}…` : value;
+            } else if (Array.isArray(value)) {
+                result[key] = value.slice(0, 10).map((entry) => {
+                    if (entry && typeof entry === 'object') {
+                        return this.sanitizeTracePayload(entry as Record<string, unknown>, depth + 1);
+                    }
+                    return entry;
+                });
+            } else if (typeof value === 'object') {
+                result[key] = this.sanitizeTracePayload(value as Record<string, unknown>, depth + 1);
+            }
+        }
+        return result;
+    }
+
+    private async transitionTurnPhase(turnId: string, phase: TurnPhase, patch: Record<string, unknown> = {}) {
+        await this.traceService.transition(turnId, phase, patch as any);
+        this.emitCurrentTurnState(turnId);
+    }
+
+    private emitCurrentTurnState(turnId: string) {
+        if (!this._view) return;
+        const state = this.traceService.getCurrentTurnState();
+        if (!state || state.turnId !== turnId) return;
+        this.emitTurnEvent(turnId, 'turnState', state);
     }
 
     // Utility methods for tool processing
@@ -775,13 +889,71 @@ export class TaskController {
         this.activeAbortController = new AbortController();
 
         try {
-            this.emitTurnEvent(turnRequestId, 'turnStart', { userText: message, startedAt: Date.now() });
+            const startedAt = Date.now();
+            const providerState = this.workspaceManager.getProviderState();
+            this.emitTurnEvent(turnRequestId, 'turnStart', { userText: message, startedAt });
+            await this.traceService.startTurn({
+                turnId: turnRequestId,
+                requestId: turnRequestId,
+                providerId: providerState.providerId as ProviderId,
+                model: this.workspaceManager.getDefaultModel(),
+                phase: 'preflight',
+                iteration: 0,
+                startedAt,
+                activeToolCallIds: [],
+                budgetState: this.workspaceManager.estimateTokenCount(),
+                traceFilePath: this.storage.getTraceFilePath(turnRequestId),
+            });
+            this.emitCurrentTurnState(turnRequestId);
 
             // Build environment_details — Cline injects this at end of every user message
             const envDetails = this.buildEnvDetails();
             const messageWithEnv = envDetails
                 ? `${message}\n\n${envDetails}`
                 : message;
+
+            const allowedTools = globalToolRegistry.getAllToolDefinitions().filter((tool) => {
+                const allowed = this.workspaceManager.getAllowedToolNames();
+                if (allowed === null) return true;
+                return allowed.includes(tool.name);
+            });
+            const preflight = this.preflight.validateRequest({
+                providerId: providerState.providerId as ProviderId,
+                model: this.workspaceManager.getDefaultModel(),
+                baseUrl: providerState.baseUrl,
+                apiKey: providerState.apiKey,
+                apiKeys: providerState.apiKeys,
+                requiresTools: allowedTools.length > 0 && this.workspaceManager.getMode() !== 'chat',
+                dynamicModels: this.workspaceManager.getProviderModelCatalog(providerState.providerId as ProviderId),
+            });
+            if (!preflight.ok) {
+                this.emitTurnEvent(turnRequestId, 'preflightWarning', {
+                    severity: 'error',
+                    warnings: preflight.warnings,
+                    errors: preflight.errors,
+                    model: preflight.resolvedModel,
+                });
+                await this.traceService.finish(turnRequestId, 'failed', {
+                    error: preflight.errors.join(' '),
+                    budgetState: this.workspaceManager.estimateTokenCount(),
+                });
+                this.emitCurrentTurnState(turnRequestId);
+                this.emitTurnEvent(turnRequestId, 'error', { message: preflight.errors.join(' ') });
+                this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
+                this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
+                this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
+                this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
+                this.turnSequenceByRequestId.delete(turnRequestId);
+                return;
+            }
+            if (preflight.warnings.length > 0) {
+                this.emitTurnEvent(turnRequestId, 'preflightWarning', {
+                    severity: 'warning',
+                    warnings: preflight.warnings,
+                    errors: [],
+                    model: preflight.resolvedModel,
+                });
+            }
 
             this.workspaceManager.appendToHistory({ role: 'user', content: messageWithEnv });
             await this.workspaceManager.persistState();
@@ -809,14 +981,15 @@ export class TaskController {
                 // ── LLM isteği — rate limit retry ile ────────────────────────
                 let response: any;
                 try {
+                    await this.transitionTurnPhase(turnRequestId, 'llm_request', {
+                        iteration,
+                        budgetState: this.workspaceManager.estimateTokenCount(),
+                        activeToolCallIds: [],
+                    });
                     response = await this.llmService.chatWithTools(
                         this.workspaceManager.getDefaultModel(),
                         this.workspaceManager.getConversationHistory(),
-                        globalToolRegistry.getAllToolDefinitions().filter(t => {
-                            const allowed = this.workspaceManager.getAllowedToolNames();
-                            if (allowed === null) return true;
-                            return allowed.includes(t.name);
-                        }),
+                        allowedTools,
                         (thinking) => {
                             const nextThinking = typeof thinking === 'string' ? thinking : '';
                             const delta = nextThinking.startsWith(lastThinkingSnapshot)
@@ -846,6 +1019,11 @@ export class TaskController {
                         msg.includes('Too Many Requests');
 
                     if (isAbort) {
+                        await this.traceService.finish(turnRequestId, 'aborted', {
+                            error: msg || 'Task aborted',
+                            budgetState: this.workspaceManager.estimateTokenCount(),
+                        });
+                        this.emitCurrentTurnState(turnRequestId);
                         continueLoop = false;
                         break;
                     }
@@ -882,8 +1060,15 @@ export class TaskController {
 
                     // Kurtarılamaz hata
                     continueLoop = false;
+                    await this.traceService.finish(turnRequestId, 'failed', {
+                        error: msg || 'LLM request failed',
+                        budgetState: this.workspaceManager.estimateTokenCount(),
+                    });
+                    this.emitCurrentTurnState(turnRequestId);
                     this.emitTurnEvent(turnRequestId, 'error', { message: msg || 'LLM request failed' });
                     this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
+                    this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
+                    this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
                     this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
                     this.turnSequenceByRequestId.delete(turnRequestId);
                     return;
@@ -899,6 +1084,11 @@ export class TaskController {
                     : [];
 
                 if (toolCalls.length > 0) {
+                    await this.transitionTurnPhase(turnRequestId, 'tool_execution', {
+                        iteration,
+                        activeToolCallIds: toolCalls.map((toolCall) => toolCall.id),
+                        budgetState: this.workspaceManager.estimateTokenCount(),
+                    });
                     this.workspaceManager.appendToHistory({
                         role: 'assistant',
                         content: response?.message?.content ?? null,
@@ -992,6 +1182,10 @@ export class TaskController {
 
                         if (toolName === 'attempt_completion') {
                             // Görev tamamlandı — frontend'e bildir
+                            await this.traceService.finish(turnRequestId, 'completed', {
+                                budgetState: this.workspaceManager.estimateTokenCount(),
+                            });
+                            this.emitCurrentTurnState(turnRequestId);
                             this.emitTurnEvent(turnRequestId, 'taskComplete', {
                                 result: toolArgs.result || toolArgs.summary || 'Task complete.'
                             });
@@ -1001,6 +1195,9 @@ export class TaskController {
 
                         const STOP_TOOLS = ['ask_followup_question', 'ask_followup_questions'];
                         if (STOP_TOOLS.includes(toolName)) {
+                            await this.transitionTurnPhase(turnRequestId, 'awaiting_user', {
+                                budgetState: this.workspaceManager.estimateTokenCount(),
+                            });
                             continueLoop = false;
                             break;
                         }
@@ -1016,6 +1213,10 @@ export class TaskController {
                     this.workspaceManager.appendToHistory({ role: 'assistant', content: finalContent });
                     this.emitTurnEvent(turnRequestId, 'finalResponse', { content: finalContent });
                     await this.workspaceManager.persistState();
+                    await this.traceService.finish(turnRequestId, 'completed', {
+                        budgetState: this.workspaceManager.estimateTokenCount(),
+                    });
+                    this.emitCurrentTurnState(turnRequestId);
 
                     // P2 FIX: Plan mode no longer auto-injects "Continue" messages.
                     // AI must use attempt_completion to signal plan is done.
@@ -1025,13 +1226,22 @@ export class TaskController {
             }
 
             this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
+            this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
+            this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
             this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
             this.turnSequenceByRequestId.delete(turnRequestId);
 
         } catch (error) {
             const msg = error instanceof Error ? error.message : 'Unknown error';
+            await this.traceService.finish(turnRequestId, 'failed', {
+                error: msg,
+                budgetState: this.workspaceManager.estimateTokenCount(),
+            });
+            this.emitCurrentTurnState(turnRequestId);
             this.emitTurnEvent(turnRequestId, 'error', { message: msg });
             this.emitTurnEvent(turnRequestId, 'tokenCount', this.workspaceManager.estimateTokenCount());
+            this.emitTurnEvent(turnRequestId, 'contextPreview', this.workspaceManager.getContextPreview() ?? {});
+            this.emitTurnEvent(turnRequestId, 'turnTraceAvailable', this.traceService.getLatestSummary() ?? {});
             this.emitTurnEvent(turnRequestId, 'turnDone', { finishedAt: Date.now() });
             this.turnSequenceByRequestId.delete(turnRequestId);
         } finally {

@@ -14,9 +14,11 @@ import { WorkingIndicator, ScrollToBottomButton } from './components/chat/Workin
 import { QuotedMessagePreview } from './components/chat/QuotedMessagePreview';
 import { ContextMenu } from './components/chat/ContextMenu';
 import { SlashCommandMenu, BUILTIN_SLASH_COMMANDS } from './components/chat/SlashCommandMenu';
+import { ContextInspector } from './components/chat/ContextInspector';
+import { TraceDrawer } from './components/chat/TraceDrawer';
 import type { SlashCommand } from './components/chat/SlashCommandMenu';
-import { ProviderSettings, PROVIDERS } from './components/settings/ProviderSettings';
-import type { ProviderId } from './components/settings/ProviderSettings';
+import { ProviderSettings } from './components/settings/ProviderSettings';
+import { PROVIDERS, type ProviderId } from './catalog/providerCatalog';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
 import type { AutoApproveConfig } from './types';
@@ -44,6 +46,11 @@ export default function App() {
     planSaved, setPlanSaved,
     taskDone, setTaskDone,
     tokenCount,
+    contextPreview,
+    latestTrace,
+    turnState,
+    preflightNotice,
+    resumeNotice,
     contextCompactionNotice,
     isStreaming,
     initialModel,
@@ -62,6 +69,8 @@ export default function App() {
   const [showContextPopup, setShowContextPopup] = useState(false);
   // Settings panel
   const [showSettings, setShowSettings] = useState(false);
+  const [showContextInspector, setShowContextInspector] = useState(false);
+  const [showTraceDrawer, setShowTraceDrawer] = useState(false);
   // Provider'dan dinamik çekilen modeller
   const [providerModelsById, setProviderModelsById] = useState<Partial<Record<ProviderId, ModelDef[]>>>({});
   // Plan timing — for elapsed display on PlanReadyCard
@@ -296,6 +305,10 @@ export default function App() {
   };
 
   const handleStop = () => vscode.postMessage({ type: 'abortTask' });
+  const handleOpenTrace = useCallback(() => {
+    if (!latestTrace?.traceFilePath) return;
+    vscode.postMessage({ type: 'openFile', path: latestTrace.traceFilePath });
+  }, [latestTrace?.traceFilePath]);
 
   const handleClear = () => {
     clearMessages();
@@ -305,6 +318,8 @@ export default function App() {
     setPlanSaved(null);
     setPlanReadyCardDismissed(false);
     setTaskStartedAt(undefined);
+    setShowContextInspector(false);
+    setShowTraceDrawer(false);
     // Reset active session → next message will create a brand new session
     setActiveSessionId(null);
     vscode.postMessage({ type: 'clearHistory' });
@@ -540,6 +555,26 @@ export default function App() {
             <History size={11} />
           </button>
           <button
+            className={`panel-header-btn${showContextInspector ? ' active' : ''}`}
+            onClick={() => {
+              setShowContextInspector((open) => !open);
+              setShowTraceDrawer(false);
+            }}
+            title="Context inspector"
+          >
+            Context
+          </button>
+          <button
+            className={`panel-header-btn${showTraceDrawer ? ' active' : ''}`}
+            onClick={() => {
+              setShowTraceDrawer((open) => !open);
+              setShowContextInspector(false);
+            }}
+            title="Debug trace"
+          >
+            Trace
+          </button>
+          <button
             className={`panel-header-btn${showSettings ? ' active' : ''}`}
             onClick={() => setShowSettings(s => !s)}
             title="Provider settings"
@@ -559,6 +594,27 @@ export default function App() {
           messageCount={messages.length}
           tokenCount={tokenCount}
         />
+      )}
+
+      {(resumeNotice || preflightNotice) && (
+        <div className={`runtime-banner${preflightNotice?.severity === 'error' ? ' runtime-banner--error' : ''}`}>
+          <span>
+            {resumeNotice || [...(preflightNotice?.errors || []), ...(preflightNotice?.warnings || [])].join(' ')}
+          </span>
+          <div className="runtime-banner-actions">
+            {latestTrace?.traceFilePath && (
+              <button
+                className="runtime-banner-btn"
+                onClick={() => {
+                  setShowTraceDrawer(true);
+                  setShowContextInspector(false);
+                }}
+              >
+                Inspect trace
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Plan Panel ── */}
@@ -773,6 +829,23 @@ export default function App() {
           endRef.current?.scrollIntoView({ behavior: 'smooth' });
           setUserScrolled(false);
         }}
+      />
+
+      <ContextInspector
+        open={showContextInspector}
+        preview={contextPreview}
+        tokenCount={tokenCount}
+        onClose={() => setShowContextInspector(false)}
+      />
+
+      <TraceDrawer
+        open={showTraceDrawer}
+        latestTrace={latestTrace}
+        turnState={turnState}
+        preflightNotice={preflightNotice}
+        resumeNotice={resumeNotice}
+        onClose={() => setShowTraceDrawer(false)}
+        onOpenTrace={handleOpenTrace}
       />
 
       {/* ── Proposal bar ── */}

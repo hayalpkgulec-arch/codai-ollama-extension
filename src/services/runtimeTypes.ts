@@ -1,0 +1,122 @@
+import type { ProviderId } from './providerCatalog';
+
+export interface ContextWindowStats {
+    contextTokens: number;
+    contextChars: number;
+    maxContextTokens: number;
+    tokensLeft: number;
+    percentUsed: number;
+    autoCompactEnabled: boolean;
+    lastCompactionAt: number | null;
+    compactedMessageCount: number;
+}
+
+export type TurnPhase =
+    | 'idle'
+    | 'preflight'
+    | 'llm_request'
+    | 'tool_execution'
+    | 'awaiting_user'
+    | 'completed'
+    | 'failed'
+    | 'aborted';
+
+export interface TurnState {
+    turnId: string;
+    requestId: string;
+    providerId: ProviderId;
+    model: string;
+    phase: TurnPhase;
+    iteration: number;
+    startedAt: number;
+    finishedAt?: number;
+    activeToolCallIds: string[];
+    budgetState: ContextWindowStats;
+    error?: string;
+    traceFilePath?: string;
+    recoveredFromPreviousRun?: boolean;
+}
+
+export interface TurnTraceEvent {
+    at: number;
+    turnId: string;
+    phase: TurnPhase;
+    type: string;
+    payload: Record<string, unknown>;
+}
+
+export interface LatestTraceSummary {
+    turnId: string;
+    providerId: ProviderId;
+    model: string;
+    phase: TurnPhase;
+    startedAt: number;
+    finishedAt?: number;
+    traceFilePath: string;
+    eventCount: number;
+    error?: string;
+}
+
+export interface CompactionSnapshot {
+    id: string;
+    createdAt: string;
+    summary: string;
+    tokenEstimate: number;
+    messageCount: number;
+}
+
+export interface RetrievalHit {
+    id: string;
+    source: 'transcript' | 'snapshot' | 'memory' | 'workspace';
+    title: string;
+    preview: string;
+    score: number;
+}
+
+export interface WorkspaceMemoryEntry {
+    id: string;
+    scope: 'session' | 'workspace' | 'preference';
+    title: string;
+    value: string;
+    source: string;
+    updatedAt: string;
+    reason: string;
+}
+
+export interface WorkspaceIndexEntry {
+    path: string;
+    language: string;
+    symbols: string[];
+    excerpt: string;
+}
+
+export interface WorkspaceIndexState {
+    builtAt: string;
+    entries: WorkspaceIndexEntry[];
+}
+
+export interface ContextArtifact {
+    id: string;
+    kind: 'system' | 'recent' | 'compacted' | 'retrieval' | 'memory' | 'workspace';
+    title: string;
+    preview: string;
+    tokenEstimate: number;
+    included: boolean;
+}
+
+export interface ContextPreviewPayload {
+    artifacts: ContextArtifact[];
+    retrievalHits: RetrievalHit[];
+    compactionSnapshotCount: number;
+    workspaceMemoryCount: number;
+}
+
+export interface ProviderPreflightResult {
+    ok: boolean;
+    providerId: ProviderId;
+    model: string;
+    resolvedModel: string;
+    warnings: string[];
+    errors: string[];
+    supportsTools: boolean;
+}

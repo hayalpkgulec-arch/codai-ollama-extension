@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.47] - 2026-03-12
+### Added
+- Shared provider capability registry, provider preflight validation, and transport adapters now form a single provider contract layer across the extension and webview
+- Local turn tracing and deterministic turn-state persistence now write redacted JSONL traces under extension storage, with new Context and Trace drawers in the chat UI
+- File-backed workspace storage, lightweight workspace indexing, retrieval-backed context compaction, and transcript-aware session restore now keep long chats resumable without dropping raw history
+- Contract tests now cover provider payload normalization, provider preflight validation, and context compaction behavior
+
+### Changed
+- Loading a saved chat now restores agent context, mode, model, and transcript state instead of only repainting UI bubbles
+- The chat header and runtime surface now expose preflight warnings, recovered-turn notices, context budget details, and trace access directly in the webview
+
+---
+
 ## [0.0.46] - 2026-03-12
 ### Fixed
 - Model selection is now scoped to the active provider instead of showing a mixed global list, so Mistral no longer receives OpenRouter or Ollama model IDs by accident

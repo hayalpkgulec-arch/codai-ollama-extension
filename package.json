@@ -2,7 +2,7 @@
   "name": "codai-ollama-tools",
   "displayName": "CodAI Ollama Tools",
   "description": "AI-powered coding assistant with multi-provider support",
-  "version": "0.0.46",
+  "version": "0.0.47",
   "publisher": "codai",
   "repository": {
     "type": "git",
@@ -97,7 +97,8 @@
     "compile:extension": "tsc -p ./",
     "compile": "npm run compile:webview && npm run compile:extension",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile"
+    "pretest": "npm run compile",
+    "test": "node --test \"out/test/**/*.test.js\""
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
