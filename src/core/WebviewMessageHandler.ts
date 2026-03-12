@@ -225,6 +225,16 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                 break;
             }
 
+            case 'getSlashCommands': {
+                try {
+                    const commands = await controller.getSlashCommands();
+                    webview.postMessage({ type: 'slashCommandsList', commands });
+                } catch (e: any) {
+                    webview.postMessage({ type: 'slashCommandsList', commands: [], error: e.message });
+                }
+                break;
+            }
+
             // ── Chat History: get all sessions ────────────────────────────
             case 'getSessions': {
                 try {
@@ -300,7 +310,7 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
             case 'revertCheckpoint': {
                 if (typeof data.checkpointId === 'string') {
                     const result = await controller.revertCheckpoint(data.checkpointId);
-                    webview.postMessage({ type: 'checkpointReverted', ...result });
+                    webview.postMessage({ type: 'checkpointReverted', checkpointId: data.checkpointId, ...result });
                 }
                 break;
             }

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { MarkdownRenderer } from '../../MarkdownRenderer';
-import type { ToolCall, ToolStatus, ChatMessage, ThinkingSegment, ContentSegment } from '../../types';
+import type { ToolCall, ToolStatus, ChatMessage, ThinkingSegment, ContentSegment, CheckpointEntry } from '../../types';
 import type { ProposalDecisions } from '../../App';
 import { vscode } from '../../vscode';
 import {
@@ -9,7 +9,7 @@ import {
   XCircle, ChevronsUpDown, Copy, Folder, Trash2,
   Move, Search, Stethoscope, Globe, Code2,
   FolderPlus, Info, Replace, RefreshCw, Files, FolderTree, Layers,
-  ExternalLink, GitCompare, Send, Quote,
+  ExternalLink, GitCompare, Send, Quote, RotateCcw,
 } from 'lucide-react';
 
 // ─── CollapsibleBody ────────────────────────────────────────────────────────
@@ -109,6 +109,33 @@ function basename(p: string) { return p.split(/[\\\/]/).filter(Boolean).pop() ||
 export function fmtDur(ms: number | null | undefined): string | null {
   if (ms == null) return null;
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function useCheckpointReverter(checkpoints: CheckpointEntry[]) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (msg.type !== 'checkpointReverted') return;
+      if (typeof msg.checkpointId !== 'string') return;
+      if (!checkpoints.some((checkpoint) => checkpoint.id === msg.checkpointId)) return;
+      setBusyId(null);
+      setStatus(msg.message || (msg.success ? 'Restore complete.' : 'Restore failed.'));
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [checkpoints]);
+
+  const revert = useCallback((checkpointId: string) => {
+    setBusyId(checkpointId);
+    setStatus('');
+    vscode.postMessage({ type: 'revertCheckpoint', checkpointId });
+  }, []);
+
+  return { busyId, status, revert };
 }
 
 // ─── StatusDot ───────────────────────────────────────────────────────────────
@@ -349,6 +376,8 @@ const WriteFileCard = memo(({ tool, decision }: WriteFileCardProps) => {
   let parsed: any = null;
   try { if (tool.result?.trim().startsWith('{')) parsed = JSON.parse(tool.result); } catch { /* */ }
   const isEdit = parsed?.mode === 'editing';
+  const checkpoints: CheckpointEntry[] = Array.isArray(parsed?.checkpoints) ? parsed.checkpoints : [];
+  const restorePoint = checkpoints[0];
 
   const rawFilename = parsed?.fileName
     || basename(tool.summary.replace(/^(creating|editing|created|edited|write|writing)\s*/i, '').trim())
@@ -373,6 +402,7 @@ const WriteFileCard = memo(({ tool, decision }: WriteFileCardProps) => {
   const diffLineCount = parsed?.hunks?.length || 0;
 
   const [diffOpen, setDiffOpen] = useState(true);
+  const { busyId, status, revert } = useCheckpointReverter(checkpoints);
 
   const openInEditor = useCallback(() => {
     if (filePath) vscode.postMessage({ type: 'openFile', path: filePath });
@@ -421,6 +451,17 @@ const WriteFileCard = memo(({ tool, decision }: WriteFileCardProps) => {
             <ExternalLink size={10} />
           </button>
         )}
+        {restorePoint && tool.status !== 'running' && (
+          <button
+            className="card-action-btn card-action-btn-restore"
+            onClick={() => revert(restorePoint.id)}
+            disabled={busyId === restorePoint.id}
+            title={`Restore ${filePath || rawFilename} from checkpoint`}
+          >
+            <RotateCcw size={10} />
+            {busyId === restorePoint.id ? 'Restoring...' : 'Restore'}
+          </button>
+        )}
         {hasDiff && tool.status !== 'running' && !isDecided && (
           <button
             className="diff-toggle-btn"
@@ -456,6 +497,7 @@ const WriteFileCard = memo(({ tool, decision }: WriteFileCardProps) => {
           </div>
         </CollapsibleBody>
       )}
+      {status && <div className="checkpoint-inline-status">{status}</div>}
       {/* NO per-card accept/reject buttons — handled globally via proposal bar */}
     </div>
   );
@@ -629,6 +671,11 @@ const BatchOperationsCard = memo(({ tool }: { tool: ToolCall }) => {
   // Parse result
   let parsed: any = null;
   try { if (tool.result?.trim().startsWith('{')) parsed = JSON.parse(tool.result); } catch { /* */ }
+  const checkpoints: CheckpointEntry[] = Array.isArray(parsed?.checkpoints) ? parsed.checkpoints : [];
+  const { busyId, status, revert } = useCheckpointReverter(checkpoints);
+  const checkpointByPath = new Map(
+    checkpoints.map((checkpoint) => [checkpoint.filePath.replace(/\\/g, '/'), checkpoint])
+  );
 
   // File list — from args (running) or parsed result (done)
   const files: Array<{ path: string; status?: string; mode?: string; addedCount?: number; removedCount?: number; error?: string }> =
@@ -690,11 +737,27 @@ const BatchOperationsCard = memo(({ tool }: { tool: ToolCall }) => {
                 <span className="batch-row-path" title={f.path}>{fname}</span>
                 {diffInfo}
                 {isErr && <span className="batch-row-err" title={f.error}>failed</span>}
+                {isWrite && !isErr && (() => {
+                  const checkpoint = checkpointByPath.get((f.path || '').replace(/\\/g, '/'));
+                  if (!checkpoint) return null;
+                  return (
+                    <button
+                      className="batch-row-restore"
+                      onClick={() => revert(checkpoint.id)}
+                      disabled={busyId === checkpoint.id}
+                      title={`Restore ${f.path}`}
+                    >
+                      <RotateCcw size={9} />
+                      {busyId === checkpoint.id ? 'Restoring...' : 'Restore'}
+                    </button>
+                  );
+                })()}
               </div>
             );
           })}
         </div>
       )}
+      {status && <div className="checkpoint-inline-status checkpoint-inline-status-batch">{status}</div>}
     </div>
   );
 });

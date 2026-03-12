@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { vscode } from '../../vscode';
 import { AutoApproveSettings } from './AutoApproveSettings';
-import { CheckpointPanel } from './CheckpointPanel';
 import type { AutoApproveConfig } from '../../types';
 
 export type ProviderId =
@@ -578,7 +577,6 @@ export const ProviderSettings = memo(({
             </div>
 
             <AutoApproveSettings onConfigChange={onAutoApproveChange} />
-            <CheckpointPanel />
         </div>
     );
 });

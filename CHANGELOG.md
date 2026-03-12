@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.36] - 2026-03-12
+### Added
+- Slash command menu now loads custom prompts from `.codai/commands`
+- Write tool cards can restore the last saved checkpoint directly from chat
+
+### Changed
+- Checkpoint restore actions moved out of settings and into the relevant tool result cards
+- Slash commands now support prompt arguments and show the source file in the menu
+
+---
+
 ## [0.0.34] - 2026-03-12
 ### Added
 - Puter provider preset wired to the official OpenAI-compatible endpoint

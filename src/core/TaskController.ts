@@ -174,6 +174,35 @@ export class TaskController {
         return this.checkpointManager?.getCheckpoints() ?? [];
     }
 
+    public async getSlashCommands(): Promise<Array<{
+        name: string;
+        description: string;
+        prompt: string;
+        sourcePath: string;
+    }>> {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!workspaceRoot) return [];
+
+        const commandsRoot = path.join(workspaceRoot, '.codai', 'commands');
+        try {
+            const stat = await fs.stat(commandsRoot);
+            if (!stat.isDirectory()) return [];
+        } catch {
+            return [];
+        }
+
+        const files = await this.collectSlashCommandFiles(commandsRoot);
+        const commands = await Promise.all(files.map((filePath) => this.readSlashCommandFile(commandsRoot, workspaceRoot, filePath)));
+        return commands
+            .filter((cmd): cmd is {
+                name: string;
+                description: string;
+                prompt: string;
+                sourcePath: string;
+            } => Boolean(cmd))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }
+
     public async deleteSession(sessionId: string): Promise<void> {
         const sessions = await this.getSessions();
         const filtered = sessions.filter((s: any) => s.id !== sessionId);
@@ -281,6 +310,91 @@ export class TaskController {
         return aliasMap[normalized] || normalized;
     }
 
+    private async collectSlashCommandFiles(dirPath: string): Promise<string[]> {
+        const found: string[] = [];
+        const entries = await fs.readdir(dirPath, { withFileTypes: true });
+
+        for (const entry of entries) {
+            if (entry.name.startsWith('.')) continue;
+            const fullPath = path.join(dirPath, entry.name);
+
+            if (entry.isDirectory()) {
+                found.push(...await this.collectSlashCommandFiles(fullPath));
+                continue;
+            }
+
+            const ext = path.extname(entry.name).toLowerCase();
+            if (['.md', '.txt', '.prompt', '.json'].includes(ext)) {
+                found.push(fullPath);
+            }
+        }
+
+        return found;
+    }
+
+    private async readSlashCommandFile(
+        commandsRoot: string,
+        workspaceRoot: string,
+        filePath: string
+    ): Promise<{
+        name: string;
+        description: string;
+        prompt: string;
+        sourcePath: string;
+    } | null> {
+        try {
+            const raw = await fs.readFile(filePath, 'utf8');
+            const ext = path.extname(filePath).toLowerCase();
+            const relToCommands = path.relative(commandsRoot, filePath).replace(/\\/g, '/');
+            const relToWorkspace = path.relative(workspaceRoot, filePath).replace(/\\/g, '/');
+
+            let name = relToCommands.replace(/\.[^.]+$/, '');
+            let prompt = raw.trim();
+            let description = '';
+
+            if (ext === '.json') {
+                const parsed = JSON.parse(raw);
+                name = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : name;
+                prompt = typeof parsed.prompt === 'string'
+                    ? parsed.prompt.trim()
+                    : typeof parsed.content === 'string'
+                        ? parsed.content.trim()
+                        : '';
+                description = typeof parsed.description === 'string' ? parsed.description.trim() : '';
+            }
+
+            name = name
+                .replace(/[\\/]+/g, '-')
+                .replace(/\s+/g, '-')
+                .replace(/[^a-zA-Z0-9:_-]/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '')
+                .toLowerCase();
+
+            if (!name || !prompt) return null;
+
+            if (!description) {
+                const firstLine = prompt
+                    .split(/\r?\n/)
+                    .map((line) => line.trim())
+                    .find(Boolean) || '';
+                description = firstLine
+                    .replace(/^#+\s*/, '')
+                    .replace(/^[-*]\s*/, '')
+                    .slice(0, 90);
+            }
+
+            return {
+                name,
+                description: description || `Custom prompt from ${relToWorkspace}`,
+                prompt,
+                sourcePath: relToWorkspace,
+            };
+        } catch {
+            return null;
+        }
+    }
+
     private parseToolArguments(rawArgs: any): any {
         if (rawArgs === undefined || rawArgs === null) return {};
         if (typeof rawArgs === 'string') {
@@ -288,6 +402,86 @@ export class TaskController {
         }
         if (typeof rawArgs === 'object') return rawArgs;
         return { value: rawArgs };
+    }
+
+    private async createCheckpointsForTool(toolName: string, args: any): Promise<Array<{
+        id: string;
+        timestamp: string;
+        filePath: string;
+        originalPath: string;
+        toolName: string;
+    }>> {
+        if (!this.checkpointManager) return [];
+        if (!['write_file', 'write_multiple_files'].includes(toolName)) return [];
+
+        const candidatePaths: string[] =
+            toolName === 'write_multiple_files'
+                ? (Array.isArray(args?.files)
+                    ? args.files
+                        .map((file: any) => typeof file?.path === 'string' ? file.path : '')
+                        .filter(Boolean)
+                    : [])
+                : [args?.path || args?.file_path || ''].filter(Boolean);
+
+        const savedIds: string[] = [];
+        for (const candidatePath of candidatePaths) {
+            const checkpointId = await this.checkpointManager.saveCheckpoint(candidatePath, toolName);
+            if (checkpointId) {
+                savedIds.push(checkpointId);
+            }
+        }
+
+        if (savedIds.length === 0) return [];
+
+        const checkpointMap = new Map(
+            this.checkpointManager.getCheckpoints().map((entry) => [entry.id, entry])
+        );
+
+        return savedIds
+            .map((checkpointId) => checkpointMap.get(checkpointId))
+            .filter((entry): entry is {
+                id: string;
+                timestamp: string;
+                filePath: string;
+                originalPath: string;
+                toolName: string;
+            } => Boolean(entry));
+    }
+
+    private attachCheckpointsToToolResult(rawResult: string, checkpoints: Array<{
+        id: string;
+        timestamp: string;
+        filePath: string;
+        originalPath: string;
+        toolName: string;
+    }>): string {
+        if (!checkpoints.length || typeof rawResult !== 'string' || !rawResult.trim().startsWith('{')) {
+            return rawResult;
+        }
+
+        try {
+            const parsed = JSON.parse(rawResult);
+            parsed.checkpoints = checkpoints;
+
+            if (parsed.__tool === 'write_file') {
+                parsed.checkpointId = checkpoints[0]?.id;
+            }
+
+            if (parsed.__tool === 'write_multiple_files' && Array.isArray(parsed.results)) {
+                const checkpointByPath = new Map(
+                    checkpoints.map((checkpoint) => [checkpoint.filePath.replace(/\\/g, '/'), checkpoint.id])
+                );
+                parsed.results = parsed.results.map((result: any) => {
+                    const resultPath = typeof result?.path === 'string' ? result.path.replace(/\\/g, '/') : '';
+                    const checkpointId = checkpointByPath.get(resultPath);
+                    return checkpointId ? { ...result, checkpointId } : result;
+                });
+            }
+
+            return JSON.stringify(parsed);
+        } catch {
+            return rawResult;
+        }
     }
 
     private buildToolSummary(toolName: string, args: any): string {
@@ -362,9 +556,9 @@ export class TaskController {
                     });
                 }
                 // write_file: strip hunks/preview from history (they're shown in UI)
-                if (p.__tool === 'write_file' || p.__tool === 'write_multiple_files') {
+                if (p.__tool === 'write_file') {
                     return JSON.stringify({
-                        __tool: p.__tool,
+                        __tool: 'write_file',
                         status: p.status,
                         summary: p.summary,
                         path: p.path,
@@ -372,6 +566,19 @@ export class TaskController {
                         addedCount: p.addedCount,
                         removedCount: p.removedCount,
                         errorMessage: p.errorMessage,
+                        checkpointId: p.checkpointId,
+                        checkpoints: Array.isArray(p.checkpoints) ? p.checkpoints : [],
+                    });
+                }
+                if (p.__tool === 'write_multiple_files') {
+                    return JSON.stringify({
+                        __tool: 'write_multiple_files',
+                        status: p.status,
+                        summary: p.summary,
+                        successCount: p.successCount,
+                        errorCount: p.errorCount,
+                        results: Array.isArray(p.results) ? p.results : [],
+                        checkpoints: Array.isArray(p.checkpoints) ? p.checkpoints : [],
                     });
                 }
             } catch { /* fallthrough */ }
@@ -627,17 +834,13 @@ export class TaskController {
                         });
 
                         // ── Checkpoint before file writes ────────────────────
-                        const WRITE_TOOLS = ['write_file', 'write_multiple_files'];
-                        if (this.checkpointManager && WRITE_TOOLS.includes(toolName)) {
-                            const filePath = toolArgs.path || toolArgs.file_path;
-                            if (typeof filePath === 'string') {
-                                const cpId = await this.checkpointManager.saveCheckpoint(filePath, toolName);
-                                if (cpId) {
-                                    this.emitTurnEvent(turnRequestId, 'checkpointSaved', {
-                                        checkpointId: cpId, filePath, toolName
-                                    });
-                                }
-                            }
+                        const checkpoints = await this.createCheckpointsForTool(toolName, toolArgs);
+                        if (checkpoints.length > 0) {
+                            this.emitTurnEvent(turnRequestId, 'checkpointSaved', {
+                                phaseId: toolPhaseId,
+                                checkpoints,
+                                toolName
+                            });
                         }
 
                         // P1 FIX: Warn AI if a bg process is already running before starting another
@@ -653,11 +856,12 @@ export class TaskController {
                         }
 
                         const result = await globalToolRegistry.executeTool(toolName, toolArgs);
-                        const normalizedResult = this.normalizeToolResult(result, toolName, summary, startedAt);
+                        const resultWithCheckpoints = this.attachCheckpointsToToolResult(result, checkpoints);
+                        const normalizedResult = this.normalizeToolResult(resultWithCheckpoints, toolName, summary, startedAt);
 
                         // Tool result history'e compact olarak gönder
                         // run_command için stdout/stderr'i truncate et — context window'u korur
-                        const historyContent = this.compactToolResult(result, toolName);
+                        const historyContent = this.compactToolResult(resultWithCheckpoints, toolName);
                         this.workspaceManager.appendToHistory({
                             role: 'tool',
                             content: historyContent,

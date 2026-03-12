@@ -13,7 +13,7 @@ import { TaskHeader } from './components/chat/TaskHeader';
 import { WorkingIndicator, ScrollToBottomButton } from './components/chat/WorkingIndicator';
 import { QuotedMessagePreview } from './components/chat/QuotedMessagePreview';
 import { ContextMenu } from './components/chat/ContextMenu';
-import { SlashCommandMenu } from './components/chat/SlashCommandMenu';
+import { SlashCommandMenu, BUILTIN_SLASH_COMMANDS } from './components/chat/SlashCommandMenu';
 import type { SlashCommand } from './components/chat/SlashCommandMenu';
 import { ProviderSettings } from './components/settings/ProviderSettings';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
@@ -89,6 +89,8 @@ export default function App() {
   // / Slash command menu
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
+  const [slashArgs, setSlashArgs] = useState('');
+  const [customSlashCommands, setCustomSlashCommands] = useState<SlashCommand[]>([]);
   const [autoApproveConfig, setAutoApproveConfig] = useState<AutoApproveConfig>(() => loadAutoApproveConfig());
   const isProviderLocal = providerInfo.providerId === 'ollama' || providerInfo.providerId === 'custom';
 
@@ -131,8 +133,35 @@ export default function App() {
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollTick, scrollToBottom]);
   useEffect(() => { vscode.postMessage({ type: 'ready' }); }, []);
+  useEffect(() => { vscode.postMessage({ type: 'getSlashCommands' }); }, []);
 
   useEffect(() => { if (todoItems) setPlanClosed(false); }, [todoItems]);
+
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const msg = event.data;
+      if (msg.type !== 'slashCommandsList') return;
+      const nextCommands = Array.isArray(msg.commands)
+        ? msg.commands
+            .filter((cmd: any) =>
+              typeof cmd?.name === 'string' &&
+              typeof cmd?.description === 'string' &&
+              typeof cmd?.prompt === 'string'
+            )
+            .map((cmd: any) => ({
+              name: cmd.name,
+              description: cmd.description,
+              prompt: cmd.prompt,
+              sourcePath: cmd.sourcePath,
+              action: 'prompt' as const,
+            }))
+        : [];
+      setCustomSlashCommands(nextCommands);
+    };
+
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
   // ── @ Mention resolved event ─────────────────────────────────────────────
   useEffect(() => {
@@ -265,13 +294,16 @@ export default function App() {
       setMentionMenuOpen(false);
     }
     // / slash command detection — only at start of input
-    const slashMatch = val.match(/^\/(\w*)$/);
+    const slashMatch = val.match(/^\/([^\s]*)(?:\s+(.*))?$/);
     if (slashMatch) {
       setSlashMenuOpen(true);
       setSlashQuery(slashMatch[1] || '');
+      setSlashArgs(slashMatch[2] || '');
       setMentionMenuOpen(false);
+      vscode.postMessage({ type: 'getSlashCommands' });
     } else {
       setSlashMenuOpen(false);
+      setSlashArgs('');
     }
   };
 
@@ -418,6 +450,7 @@ export default function App() {
   });
 
   const isEmpty = visible.length === 0 && !isProcessing;
+  const slashCommands = useMemo(() => [...BUILTIN_SLASH_COMMANDS, ...customSlashCommands], [customSlashCommands]);
 
   return (
     <div className="app">
@@ -579,13 +612,30 @@ export default function App() {
       {/* ── / Slash command menu ── */}
       {slashMenuOpen && !isProcessing && (
         <SlashCommandMenu
+          commands={slashCommands}
           query={slashQuery}
           onClose={() => setSlashMenuOpen(false)}
           onSelect={(cmd: SlashCommand) => {
             setSlashMenuOpen(false);
+            if (cmd.action === 'prompt') {
+              const args = slashArgs.trim();
+              const renderedPrompt = cmd.prompt?.includes('$ARGUMENTS')
+                ? cmd.prompt.replace(/\$ARGUMENTS/g, args)
+                : (args ? `${cmd.prompt?.trim()}\n\n${args}` : cmd.prompt || '');
+              setInput(renderedPrompt.trim());
+              requestAnimationFrame(() => {
+                if (textareaRef.current) {
+                  textareaRef.current.focus();
+                  textareaRef.current.style.height = 'auto';
+                  textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+                }
+              });
+              return;
+            }
+
             setInput('');
             switch (cmd.builtinKey) {
-              case 'new':   handleClear(); break;
+              case 'new': handleClear(); break;
               case 'clear': handleClear(); break;
               case 'mode:code': handleModeChange(MODES.find(m => m.id === 'code')!); break;
               case 'mode:plan': handleModeChange(MODES.find(m => m.id === 'plan')!); break;

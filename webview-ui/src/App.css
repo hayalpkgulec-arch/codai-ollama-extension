@@ -5181,3 +5181,47 @@ button:focus-visible {
     opacity: 0.55;
     cursor: not-allowed;
 }
+.card-action-btn-restore {
+  gap: 4px;
+  min-width: 78px;
+}
+
+.checkpoint-inline-status {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 201, 176, 0.22);
+  background: rgba(78, 201, 176, 0.08);
+  color: var(--vscode-descriptionForeground, #9aa0a6);
+  font-size: 11px;
+}
+
+.checkpoint-inline-status-batch {
+  margin-top: 10px;
+}
+
+.batch-row-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--vscode-foreground, #d4d4d4);
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.batch-row-restore:hover:not(:disabled),
+.card-action-btn-restore:hover:not(:disabled) {
+  border-color: rgba(78, 201, 176, 0.32);
+  background: rgba(78, 201, 176, 0.12);
+}
+
+.batch-row-restore:disabled,
+.card-action-btn-restore:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
