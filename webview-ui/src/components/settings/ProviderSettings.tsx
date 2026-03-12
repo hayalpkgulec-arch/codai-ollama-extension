@@ -411,6 +411,7 @@ export const ProviderSettings = memo(({
             apiKey: allKeys[0] || undefined,
             apiKeys: allKeys.length > 1 ? allKeys : undefined,
             baseUrl: baseUrl || def.defaultBaseUrl,
+            model: selectedModel || undefined,
         });
 
         if (selectedModel) {

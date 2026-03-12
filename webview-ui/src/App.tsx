@@ -15,7 +15,8 @@ import { QuotedMessagePreview } from './components/chat/QuotedMessagePreview';
 import { ContextMenu } from './components/chat/ContextMenu';
 import { SlashCommandMenu, BUILTIN_SLASH_COMMANDS } from './components/chat/SlashCommandMenu';
 import type { SlashCommand } from './components/chat/SlashCommandMenu';
-import { ProviderSettings } from './components/settings/ProviderSettings';
+import { ProviderSettings, PROVIDERS } from './components/settings/ProviderSettings';
+import type { ProviderId } from './components/settings/ProviderSettings';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
 import type { AutoApproveConfig } from './types';
@@ -24,21 +25,14 @@ import type { KeyboardEvent, ChangeEvent } from 'react';
 import './App.css';
 
 // ── Static fallback model list (cloud + local) ─────────────────────────────
-const STATIC_MODELS = [
-  { id: 'kimi-k2.5:cloud', label: 'Kimi K2.5', tag: 'cloud' as const },
-  { id: 'deepseek-v3.1:671b-cloud', label: 'DeepSeek V3.1 671B', tag: 'cloud' as const },
-  { id: 'qwen3-coder:480b-cloud', label: 'Qwen3 Coder 480B', tag: 'cloud' as const },
-  { id: 'minimax-m2.5:cloud', label: 'MiniMax M2.5', tag: 'cloud' as const },
-  { id: 'minimax-m2:cloud', label: 'MiniMax M2', tag: 'cloud' as const },
-  { id: 'gpt-oss:120b-cloud', label: 'GPT OSS 120B', tag: 'cloud' as const },
-  { id: 'qwen2.5-coder:32b', label: 'Qwen2.5 Coder 32B', tag: 'local' as const },
-  { id: 'codestral:22b', label: 'Codestral 22B', tag: 'local' as const },
-  { id: 'llama3.3:70b', label: 'Llama 3.3 70B', tag: 'local' as const },
-  { id: 'mistral:7b', label: 'Mistral 7B', tag: 'local' as const },
-];
-
 export type ModelDef = { id: string; label: string; tag: 'cloud' | 'local' };
 export type ProposalDecisions = Map<string, 'accepted' | 'rejected'>;
+const DEFAULT_PROVIDER_DEF = PROVIDERS.find((provider) => provider.id === 'ollama')!;
+const DEFAULT_MODEL: ModelDef = {
+  id: DEFAULT_PROVIDER_DEF.defaultModels[0]?.id || 'qwen2.5-coder:32b',
+  label: DEFAULT_PROVIDER_DEF.defaultModels[0]?.label || 'Qwen2.5 Coder 32B',
+  tag: DEFAULT_PROVIDER_DEF.isLocal ? 'local' : 'cloud',
+};
 
 export default function App() {
   const {
@@ -60,7 +54,7 @@ export default function App() {
   } = useVSCodeMessage();
 
   const [input, setInput] = useState('');
-  const [model, setModel] = useState<ModelDef>(STATIC_MODELS[0]);
+  const [model, setModel] = useState<ModelDef>(DEFAULT_MODEL);
   const [selectedMode, setSelectedMode] = useState<ModeDef>(MODES[0]);
   const [decisions, setDecisions] = useState<ProposalDecisions>(new Map());
   const [planClosed, setPlanClosed] = useState(false);
@@ -69,7 +63,7 @@ export default function App() {
   // Settings panel
   const [showSettings, setShowSettings] = useState(false);
   // Provider'dan dinamik çekilen modeller
-  const [dynamicModels, setDynamicModels] = useState<ModelDef[]>([]);
+  const [providerModelsById, setProviderModelsById] = useState<Partial<Record<ProviderId, ModelDef[]>>>({});
   // Plan timing — for elapsed display on PlanReadyCard
   const [planStartedAt] = useState<number>(() => Date.now());
   const [planReadyCardDismissed, setPlanReadyCardDismissed] = useState(false);
@@ -90,7 +84,9 @@ export default function App() {
   const [slashArgs, setSlashArgs] = useState('');
   const [customSlashCommands, setCustomSlashCommands] = useState<SlashCommand[]>([]);
   const [autoApproveConfig, setAutoApproveConfig] = useState<AutoApproveConfig>(() => loadAutoApproveConfig());
-  const isProviderLocal = providerInfo.providerId === 'ollama' || providerInfo.providerId === 'custom';
+  const currentProviderId = providerInfo.providerId as ProviderId;
+  const currentProviderDef = PROVIDERS.find((provider) => provider.id === currentProviderId) ?? DEFAULT_PROVIDER_DEF;
+  const isProviderLocal = currentProviderDef.isLocal;
 
   // ── History ────────────────────────────────────────────────────────────────
   const {
@@ -111,13 +107,7 @@ export default function App() {
   // BUG 8 FIX: Backend'den gelen model bilgisiyle state'i restore et
   useEffect(() => {
     if (!initialModel) return;
-    const found = STATIC_MODELS.find(m => m.id === initialModel);
-    if (found) {
-      setModel(found);
-    } else {
-      // Listede yoksa dynamic olarak ekle
-      setModel({ id: initialModel, label: initialModel, tag: isProviderLocal ? 'local' : 'cloud' });
-    }
+    setModel({ id: initialModel, label: initialModel, tag: isProviderLocal ? 'local' : 'cloud' });
   }, [initialModel, isProviderLocal]);
 
   // BUG 14 FIX: Ollama'dan dinamik model listesi — uygulama açılışında çek
@@ -427,19 +417,35 @@ export default function App() {
   }, [activeFileContext, setActiveFileContext]);
 
   // Dinamik model listesi: provider'dan gelenler öncelikli, yoksa static fallback
-  const allModels: ModelDef[] = useMemo(() => {
+  const currentProviderModels: ModelDef[] = useMemo(() => {
     // Settings panelinden manuel çekilen modeller en yüksek öncelik
-    if (dynamicModels.length > 0) return dynamicModels;
+    const fetchedModels = providerModelsById[currentProviderId];
+    if (fetchedModels && fetchedModels.length > 0) return fetchedModels;
     // Ollama auto-fetch (BUG 14)
-    if (ollamaModels.length > 0) {
-      const cloudModels = STATIC_MODELS.filter(m => m.tag === 'cloud');
-      const dynamicLocal: ModelDef[] = ollamaModels.map(m => ({
-        id: m.id, label: m.label, tag: 'local' as const,
+    if (currentProviderId === 'ollama' && ollamaModels.length > 0) {
+      return ollamaModels.map((modelDef) => ({
+        id: modelDef.id,
+        label: modelDef.label,
+        tag: 'local' as const,
       }));
-      return [...cloudModels, ...dynamicLocal];
     }
-    return STATIC_MODELS;
-  }, [ollamaModels, dynamicModels]);
+    if (currentProviderDef.defaultModels.length > 0) {
+      return currentProviderDef.defaultModels.map((modelDef) => ({
+        id: modelDef.id,
+        label: modelDef.label,
+        tag: currentProviderDef.isLocal ? 'local' as const : 'cloud' as const,
+      }));
+    }
+    return [];
+  }, [currentProviderDef, currentProviderId, ollamaModels, providerModelsById]);
+
+  useEffect(() => {
+    if (currentProviderModels.length === 0) return;
+    if (currentProviderModels.some((candidate) => candidate.id === model.id)) return;
+    const fallbackModel = currentProviderModels[0];
+    setModel(fallbackModel);
+    vscode.postMessage({ type: 'changeModel', model: fallbackModel.id });
+  }, [currentProviderModels, model.id]);
 
   // ── Visible messages ──────────────────────────────────────────────────────
   const visible = messages.filter(m => {
@@ -471,16 +477,19 @@ export default function App() {
           savedProviderConfigs={providerInfo.configs}
           onAutoApproveChange={setAutoApproveConfig}
           onClose={() => setShowSettings(false)}
-          onProviderModels={(_providerId, models, isLocal) => {
+          onProviderModels={(providerId, models, isLocal) => {
             const dynamicProviderModels = models.map(m => ({
               id: m.id,
               label: m.label,
               tag: isLocal ? 'local' as const : 'cloud' as const,
             }));
-            setDynamicModels(dynamicProviderModels);
+            setProviderModelsById((previous) => ({
+              ...previous,
+              [providerId]: dynamicProviderModels,
+            }));
           }}
           onModelSelect={(modelId) => {
-            const found = allModels.find(m => m.id === modelId);
+            const found = currentProviderModels.find(m => m.id === modelId);
             if (found) setModel(found);
             else setModel({ id: modelId, label: modelId, tag: isProviderLocal ? 'local' : 'cloud' });
           }}
@@ -816,7 +825,7 @@ export default function App() {
                 )}
               </div>
               <ModeSelector selected={selectedMode} onChange={handleModeChange} disabled={isProcessing} />
-              <ModelPicker models={allModels} selected={model} onChange={handleModelChange} disabled={isProcessing} />
+              <ModelPicker models={currentProviderModels} selected={model} onChange={handleModelChange} disabled={isProcessing} />
 
               {/* Terminal button — opens CodAI terminal */}
               <button

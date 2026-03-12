@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.46] - 2026-03-12
+### Fixed
+- Model selection is now scoped to the active provider instead of showing a mixed global list, so Mistral no longer receives OpenRouter or Ollama model IDs by accident
+- Applying a provider now sends the provider change and selected model together, and the chat UI auto-falls back to the first valid model for that provider when the current one is invalid
+
+---
+
 ## [0.0.45] - 2026-03-12
 ### Fixed
 - Duplicate tool call IDs inside the same assistant message are now uniquified before tool execution and before provider requests are sent

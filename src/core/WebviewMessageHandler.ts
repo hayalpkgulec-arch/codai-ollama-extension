@@ -190,6 +190,9 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
                         data.baseUrl || '',
                         Array.isArray(data.apiKeys) ? data.apiKeys : undefined
                     );
+                    if (typeof data.model === 'string' && data.model) {
+                        controller.changeModel(data.model);
+                    }
                     const providerState = controller.getProviderState();
                     const providerConfig = controller.getProviderConfig(providerState.providerId);
                     webview.postMessage({
