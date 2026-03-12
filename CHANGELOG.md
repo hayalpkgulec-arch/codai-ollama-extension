@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.45] - 2026-03-12
+### Fixed
+- Duplicate tool call IDs inside the same assistant message are now uniquified before tool execution and before provider requests are sent
+- Older chat history containing duplicate tool call IDs is remapped on the provider-request path so strict providers like Mistral no longer reject it with `invalid_request_message_order`
+
+---
+
 ## [0.0.44] - 2026-03-12
 ### Fixed
 - OpenAI-compatible provider requests now normalize assistant tool calls, tool call IDs, and message content before sending history back to Mistral, OpenRouter, Gemini, and similar providers

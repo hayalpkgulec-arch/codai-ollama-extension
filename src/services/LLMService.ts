@@ -171,7 +171,10 @@ export class LLMService {
         return typeof content === 'string' ? content : JSON.stringify(content);
     }
 
-    private normalizeToolCalls(toolCalls: Message['tool_calls']): Array<{
+    private normalizeToolCalls(
+        toolCalls: Message['tool_calls'],
+        toolIdQueues?: Map<string, string[]>
+    ): Array<{
         id: string;
         type: 'function';
         function: {
@@ -181,6 +184,7 @@ export class LLMService {
     }> | undefined {
         if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
 
+        const seenToolCallIds = new Set<string>();
         const normalized = toolCalls
             .map((toolCall, index) => {
                 const name = typeof toolCall?.function?.name === 'string'
@@ -192,11 +196,23 @@ export class LLMService {
                 const serializedArgs = typeof rawArgs === 'string'
                     ? rawArgs
                     : JSON.stringify(rawArgs ?? {});
+                const baseId = typeof toolCall?.id === 'string' && toolCall.id.trim()
+                    ? toolCall.id
+                    : `tool_call_${Date.now()}_${index}`;
+                let uniqueId = baseId;
+                let collisionIndex = 2;
+                while (seenToolCallIds.has(uniqueId)) {
+                    uniqueId = `${baseId}_${collisionIndex++}`;
+                }
+                seenToolCallIds.add(uniqueId);
+                if (toolIdQueues) {
+                    const queue = toolIdQueues.get(baseId) ?? [];
+                    queue.push(uniqueId);
+                    toolIdQueues.set(baseId, queue);
+                }
 
                 return {
-                    id: typeof toolCall?.id === 'string' && toolCall.id.trim()
-                        ? toolCall.id
-                        : `tool_call_${Date.now()}_${index}`,
+                    id: uniqueId,
                     type: 'function' as const,
                     function: {
                         name,
@@ -211,15 +227,18 @@ export class LLMService {
 
     private toOpenAICompatibleMessages(messages: Message[]): any[] {
         const pendingToolIds = new Set<string>();
+        const pendingToolIdQueues = new Map<string, string[]>();
         const normalizedMessages: any[] = [];
 
         for (const message of messages) {
             const role = message.role;
             const content = this.normalizeMessageContent(message.content);
-            const normalizedToolCalls = this.normalizeToolCalls(message.tool_calls);
             const base: any = { role };
 
             if (role === 'assistant') {
+                pendingToolIds.clear();
+                pendingToolIdQueues.clear();
+                const normalizedToolCalls = this.normalizeToolCalls(message.tool_calls, pendingToolIdQueues);
                 base.content = normalizedToolCalls ? (content ?? null) : (content ?? '');
                 if (normalizedToolCalls) {
                     base.tool_calls = normalizedToolCalls;
@@ -233,17 +252,29 @@ export class LLMService {
             }
 
             if (role === 'tool') {
-                if (typeof message.tool_call_id !== 'string' || !pendingToolIds.has(message.tool_call_id)) {
+                if (typeof message.tool_call_id !== 'string') {
+                    continue;
+                }
+                const queue = pendingToolIdQueues.get(message.tool_call_id);
+                const remappedToolCallId = queue?.length
+                    ? queue.shift()!
+                    : message.tool_call_id;
+                if (queue && queue.length === 0) {
+                    pendingToolIdQueues.delete(message.tool_call_id);
+                }
+                if (!pendingToolIds.has(remappedToolCallId)) {
                     continue;
                 }
                 base.content = content ?? '';
-                base.tool_call_id = message.tool_call_id;
-                pendingToolIds.delete(message.tool_call_id);
+                base.tool_call_id = remappedToolCallId;
+                pendingToolIds.delete(remappedToolCallId);
                 if (typeof message.name === 'string' && message.name.trim()) base.name = message.name;
                 normalizedMessages.push(base);
                 continue;
             }
 
+            pendingToolIds.clear();
+            pendingToolIdQueues.clear();
             base.content = content ?? '';
             if (typeof message.name === 'string' && message.name.trim()) base.name = message.name;
             normalizedMessages.push(base);

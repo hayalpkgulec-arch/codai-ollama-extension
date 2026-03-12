@@ -373,6 +373,7 @@ export class WorkspaceManager {
             : typeof message.content === 'string'
                 ? message.content
                 : JSON.stringify(message.content);
+        const seenToolCallIds = new Set<string>();
 
         const normalizedToolCalls = Array.isArray(message.tool_calls)
             ? message.tool_calls
@@ -383,10 +384,17 @@ export class WorkspaceManager {
                         : JSON.stringify(rawArgs ?? {});
                     const name = typeof toolCall?.function?.name === 'string' ? toolCall.function.name : '';
                     if (!name) return null;
+                    const baseId = typeof toolCall?.id === 'string' && toolCall.id.trim()
+                        ? toolCall.id
+                        : `tool_call_${Date.now()}_${index}`;
+                    let uniqueId = baseId;
+                    let collisionIndex = 2;
+                    while (seenToolCallIds.has(uniqueId)) {
+                        uniqueId = `${baseId}_${collisionIndex++}`;
+                    }
+                    seenToolCallIds.add(uniqueId);
                     return {
-                        id: typeof toolCall?.id === 'string' && toolCall.id.trim()
-                            ? toolCall.id
-                            : `tool_call_${Date.now()}_${index}`,
+                        id: uniqueId,
                         type: 'function' as const,
                         function: {
                             name,
@@ -459,6 +467,7 @@ export class WorkspaceManager {
         this.conversationHistory.push(normalizedMessage);
         this.compactHistory();
         this.syncSystemMessage();
+        return;
         // B07 FIX: Strip environment_details from old user messages before adding new one.
         // environment_details is only useful for the CURRENT message — old ones waste tokens.
         this.conversationHistory = this.conversationHistory.map(m => {

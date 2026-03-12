@@ -579,7 +579,7 @@ export class TaskController {
      * run_command: stdout+stderr truncated to 8000 chars total
      * write_file / large results: strip binary/preview data before storing
      */
-    private normalizeToolCall(toolCall: any, iteration: number, index: number) {
+    private normalizeToolCall(toolCall: any, iteration: number, index: number, usedIds?: Set<string>) {
         const rawArgs = toolCall?.function?.arguments;
         const stringArgs = typeof rawArgs === 'string'
             ? rawArgs
@@ -587,11 +587,20 @@ export class TaskController {
         const toolName = this.normalizeToolName(
             typeof toolCall?.function?.name === 'string' ? toolCall.function.name : ''
         );
+        const baseId = typeof toolCall?.id === 'string' && toolCall.id.trim()
+            ? toolCall.id
+            : `tool_call_${iteration}_${index}_${Date.now()}`;
+        let uniqueId = baseId;
+        if (usedIds) {
+            let collisionIndex = 2;
+            while (usedIds.has(uniqueId)) {
+                uniqueId = `${baseId}_${collisionIndex++}`;
+            }
+            usedIds.add(uniqueId);
+        }
 
         return {
-            id: typeof toolCall?.id === 'string' && toolCall.id.trim()
-                ? toolCall.id
-                : `tool_call_${iteration}_${index}_${Date.now()}`,
+            id: uniqueId,
             type: 'function' as const,
             function: {
                 name: toolName,
@@ -882,9 +891,10 @@ export class TaskController {
 
                 // ── Tool çağrıları ─────────────────────────────────────────────
                 const rawToolCalls = response?.message?.tool_calls ?? response?.tool_calls ?? [];
+                const usedToolCallIds = new Set<string>();
                 const toolCalls = Array.isArray(rawToolCalls)
                     ? rawToolCalls
-                        .map((toolCall, index) => this.normalizeToolCall(toolCall, iteration, index))
+                        .map((toolCall, index) => this.normalizeToolCall(toolCall, iteration, index, usedToolCallIds))
                         .filter((toolCall) => toolCall.function.name)
                     : [];
 
