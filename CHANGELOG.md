@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.38] - 2026-03-12
+### Fixed
+- Provider settings no longer re-fetch models continuously when the selected model or saved provider state changes
+- Applying provider settings no longer triggers a duplicate model refresh that can keep the loader spinning
+
+---
+
 ## [0.0.37] - 2026-03-12
 ### Fixed
 - Provider model fetching now uses the currently selected provider config instead of stale saved state

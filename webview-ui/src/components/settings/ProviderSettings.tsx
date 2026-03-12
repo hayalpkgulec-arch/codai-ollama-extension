@@ -232,6 +232,10 @@ export const ProviderSettings = memo(({
     const credentialPlaceholder = def.credentialPlaceholder || 'sk-...';
     const credentialActionLabel = def.credentialActionLabel || 'Get free key';
 
+    useEffect(() => {
+        setSelectedModel(currentModel);
+    }, [currentModel]);
+
     const requestModels = useCallback((providerId: ProviderId, keyOverride?: string, extraKeyOverrides?: string[], baseUrlOverride?: string) => {
         const requestId = `provider-models-${providerId}-${Date.now()}-${modelsRequestSeq.current++}`;
         activeModelsRequestId.current = requestId;
@@ -273,12 +277,25 @@ export const ProviderSettings = memo(({
         activeModelsRequestId.current = null;
 
         const canAutoFetch = !nextProvider?.requiresApiKey || (selectedId === currentProviderId && hasApiKey);
+        let timer: ReturnType<typeof setTimeout> | undefined;
         if (canAutoFetch) {
-            setTimeout(() => {
-                requestModels(selectedId, '', [], nextProvider?.defaultBaseUrl);
+            const requestId = `provider-models-${selectedId}-${Date.now()}-${modelsRequestSeq.current++}`;
+            activeModelsRequestId.current = requestId;
+            setFetchingModels(true);
+            setModelsError('');
+            timer = setTimeout(() => {
+                vscode.postMessage({
+                    type: 'fetchProviderModels',
+                    requestId,
+                    providerId: selectedId,
+                    baseUrl: selectedId === currentProviderId ? currentBaseUrl : nextProvider?.defaultBaseUrl,
+                });
             }, 150);
         }
-    }, [currentProviderId, hasApiKey, requestModels, selectedId, selectedModel, setBaseUrl]);
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    }, [currentBaseUrl, currentProviderId, hasApiKey, selectedId, setBaseUrl]);
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {
@@ -320,14 +337,6 @@ export const ProviderSettings = memo(({
                     setKeyCount(event.data.keyCount);
                 }
                 setTimeout(() => setSaved(false), 2000);
-                setTimeout(() => {
-                    requestModels(
-                        event.data.providerId || selectedId,
-                        '',
-                        [],
-                        event.data.baseUrl || baseUrl || def.defaultBaseUrl
-                    );
-                }, 200);
             }
         };
 
