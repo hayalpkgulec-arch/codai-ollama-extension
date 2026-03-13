@@ -19,6 +19,7 @@
 - [x] The default fork path no longer lives under the main repo root, preventing ambient TypeScript type leakage from the extension workspace into upstream builds
 - [x] A documented patch map exists for where CodAI will hook chat, review, trace, terminal, and runtime surfaces into VS Code OSS
 - [x] The fork launch path opens CodAI as the extension-backed AI surface inside the native right auxiliary pane
+- [x] The first integrated right-pane slice uses a shared neutral-dark palette across the fork shell and the CodAI webview instead of mismatched blue and dark surfaces
 - [ ] Shared runtime modules are consumable from the fork host without depending on the VS Code extension webview shell
 - [ ] The first fork milestone can open a workspace, show the explorer/editor, open CodAI chat, and render review/trace side panels
 - [ ] The first GUI-first fork milestone supports persistent thread history, review-first side panels, and a native-feeling agent composer inside the VS Code OSS workbench
@@ -39,3 +40,4 @@
 - 2026-03-13: The fork bootstrap/start path was moved out of the repository root after the first upstream compile attempt showed duplicate `vscode.d.ts` symbols coming from the main repo's `node_modules/@types/vscode`. The default fork location is now a sibling folder to keep the upstream workspace isolated.
 - 2026-03-13: The visual product target is now explicitly GUI-first. Dvina-style multi-session agent workflows and Cursor-like native workbench polish are the benchmark, while VS Code OSS remains the technical base.
 - 2026-03-13: The first integrated fork slice now launches with the local CodAI extension loaded as the active AI surface. CodAI is contributed into the secondary sidebar/right auxiliary bar, giving the fork a real extension-backed agent lane instead of a mock shell.
+- 2026-03-13: The first right-pane visual unification pass is in place. The shell and CodAI lane now share a darker neutral palette, which raises the baseline before deeper native thread/review/trace work.

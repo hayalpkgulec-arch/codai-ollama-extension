@@ -11,6 +11,11 @@
   - `src/vs/workbench/browser/parts/auxiliarybar/media/auxiliaryBarPart.css`: dedicated right-lane styling for the CodAI AI surface
   - `src/vs/workbench/browser/parts/panel/media/panelpart.css`: bottom panel styling aligned with the new shell
   - `src/vs/workbench/browser/parts/editor/media/editortabscontrol.css`: softer editor tabs closer to the Cursor/Dvina target
+- 2026-03-13: First right-pane palette unification pass shipped.
+  - `webview-ui/src/App.css`: moves the CodAI webview away from transparent and blue-tinted extension styling toward solid charcoal cards, composer surfaces, and softer neutral borders
+  - `src/vs/workbench/browser/parts/statusbar/media/statusbarpart.css`: aligns the lower shell with the darker neutral baseline
+  - `src/vs/workbench/browser/parts/sidebar/media/sidebarpart.css`: removes the more saturated blue row selection in favor of softer neutral active states
+  - `src/vs/workbench/browser/parts/auxiliarybar/media/auxiliaryBarPart.css`: keeps the right lane visually aligned with the rest of the fork shell
 
 ## Product Goal
 

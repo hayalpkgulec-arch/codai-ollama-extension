@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.0.61] - 2026-03-13
+### Added
+- Added a second fork design pass that pushes the VS Code OSS shell and the CodAI right-pane webview toward a more consistent Cursor/Dvina-style neutral dark system
+
+### Changed
+- Reworked the CodAI chat webview to use solid charcoal surfaces, softer borders, and reduced blue tinting so the right AI pane reads as part of the IDE instead of a mismatched extension panel
+- Tuned the fork titlebar, activity bar, sidebar, auxiliary bar, panel, tabs, and status bar to the same darker neutral palette with softer selection states
+
+---
+
 ## [0.0.60] - 2026-03-13
 ### Added
 - Added a native VS Code OSS workbench contribution that moves the CodAI extension view into the right auxiliary pane and opens it as the active AI lane on startup
