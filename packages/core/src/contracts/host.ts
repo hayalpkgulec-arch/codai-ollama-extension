@@ -1,3 +1,5 @@
+import type { TerminalRunResult, WorkspaceSnapshot, WorkspaceSnapshotNode } from './runtime';
+
 export interface WorkspaceTreeNode {
   name: string;
   path: string;
@@ -15,10 +17,10 @@ export interface ActiveSelectionContext {
 
 export interface WorkspaceHost {
   getWorkspaceRoot(): Promise<string | null>;
-  openWorkspace(): Promise<string | null>;
+  openWorkspace(): Promise<WorkspaceSnapshot | null>;
   readFile(path: string): Promise<string>;
   writeFile(path: string, content: string): Promise<void>;
-  listTree(rootPath: string): Promise<WorkspaceTreeNode[]>;
+  listTree(rootPath: string): Promise<Array<WorkspaceTreeNode | WorkspaceSnapshotNode>>;
 }
 
 export interface EditorHost {
@@ -28,7 +30,7 @@ export interface EditorHost {
 }
 
 export interface TerminalHost {
-  run(command: string, cwd?: string): Promise<void>;
+  run(command: string, cwd?: string): Promise<TerminalRunResult>;
   mirror(command: string, cwd?: string): Promise<void>;
   stopActive(): Promise<void>;
 }

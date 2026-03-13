@@ -13,6 +13,70 @@ export interface ShellExecutionEnvelope {
   shellArgs: string[];
 }
 
+export interface WorkspaceSnapshotNode {
+  name: string;
+  path: string;
+  kind: 'file' | 'directory';
+  children?: WorkspaceSnapshotNode[];
+}
+
+export interface WorkspaceSnapshot {
+  rootPath: string;
+  openedAt: number;
+  nodes: WorkspaceSnapshotNode[];
+  recentFiles?: string[];
+  branch?: string | null;
+}
+
+export interface TerminalRunResult {
+  id: string;
+  command: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  durationMs: number;
+  startedAt: number;
+  finishedAt: number;
+  cwd: string;
+  shell: ShellExecutionEnvelope;
+}
+
+export type RuntimeEvent =
+  | {
+      type: 'command-started';
+      id: string;
+      command: string;
+      cwd: string;
+      shell: ShellExecutionEnvelope;
+      at: number;
+    }
+  | {
+      type: 'command-finished';
+      id: string;
+      command: string;
+      result: TerminalRunResult;
+      summary: string;
+      at: number;
+    };
+
+export type WorkspaceEvent =
+  | {
+      type: 'workspace-opened';
+      rootPath: string;
+      branch?: string | null;
+      at: number;
+    }
+  | {
+      type: 'file-opened';
+      path: string;
+      at: number;
+    }
+  | {
+      type: 'file-saved';
+      path: string;
+      at: number;
+    };
+
 export interface ModelCatalogState {
   status: 'idle' | 'connecting' | 'loaded' | 'error';
   providerId: string;
