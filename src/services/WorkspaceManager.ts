@@ -86,6 +86,7 @@ export class WorkspaceManager {
     private providerModelCatalogs: Partial<Record<ProviderId, Array<{ id: string; label: string }>>> = {};
     private planTodos = '';
     private planSummary = '';
+    private externalReadOnlyToolNames: string[] = [];
     private readonly indexService = new WorkspaceIndexService();
 
     private providerState: ProviderState = {
@@ -330,6 +331,10 @@ export class WorkspaceManager {
 
     public getMode(): AgentMode { return this.agentMode; }
 
+    public setExternalReadOnlyToolNames(toolNames: string[]) {
+        this.externalReadOnlyToolNames = [...new Set(toolNames.filter((toolName) => typeof toolName === 'string' && toolName.trim()))];
+    }
+
     public setMode(mode: AgentMode) {
         this.agentMode = mode;
         this.refreshContextState();
@@ -345,6 +350,7 @@ export class WorkspaceManager {
             'browser_navigate', 'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
             'task_notes', 'ask_followup_questions', 'ask_followup_question',
             'save_plan', 'attempt_completion',
+            ...this.externalReadOnlyToolNames,
         ];
 
         return [
@@ -357,6 +363,7 @@ export class WorkspaceManager {
             'browser_navigate', 'browser_click', 'browser_type', 'browser_scroll',
             'browser_wait_for_text', 'browser_screenshot', 'browser_console_logs', 'browser_close',
             'ask_followup_question', 'attempt_completion',
+            ...this.externalReadOnlyToolNames,
         ];
     }
 

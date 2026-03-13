@@ -124,6 +124,13 @@ test('MessageStateStore saves schema-versioned runtime snapshots', async () => {
             recommendedAction: 'Keep going.',
         }),
         () => ({
+            turnId: 'turn-1',
+            activeGoal: 'Ship the runtime refactor',
+            checkpoints: [{ id: 'cp-1', label: 'Finish runtime split', done: false }],
+            driftWarnings: [],
+            recommendedNextStep: 'Keep the next action scoped.',
+        }),
+        () => ({
             active: true,
             sessionId: 'browser-1',
             currentUrl: 'https://example.com',
@@ -149,6 +156,7 @@ test('MessageStateStore saves schema-versioned runtime snapshots', async () => {
     assert.equal(written.messageState.model, 'qwen3');
     assert.equal(written.runtimeSnapshots[0].turnState.turnId, 'turn-1');
     assert.equal(written.runtimeSnapshots[0].toolControlState.turnId, 'turn-1');
+    assert.equal(written.runtimeSnapshots[0].goalControlState.activeGoal, 'Ship the runtime refactor');
     assert.equal(written.runtimeSnapshots[0].browserSessionState.sessionId, 'browser-1');
     assert.equal(written.browserArtifactsIndex[0].kind, 'screenshot');
 });
@@ -192,6 +200,7 @@ test('MessageStateStore migrates legacy session payloads and restores meta fallb
         { globalState } as any,
         workspaceManager as any,
         traceService as any,
+        () => null,
         () => null,
         () => null,
         () => [],

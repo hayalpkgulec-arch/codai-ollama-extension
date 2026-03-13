@@ -128,6 +128,7 @@ export function useVSCodeBridge() {
             initialModel: typeof msg.model === 'string' && msg.model ? msg.model : extensionRef.current.initialModel,
             selectedModel: toModelDef(nextModelId, nextModelId, !!providerDef?.isLocal),
             providerInfo,
+            toolCatalog: Array.isArray(msg.toolCatalog) ? msg.toolCatalog : extensionRef.current.toolCatalog,
           });
           runtime.patch({
             messages: reconstructHistory(msg.history || []),
@@ -136,8 +137,11 @@ export function useVSCodeBridge() {
             latestTrace: msg.latestTrace || null,
             turnState: msg.turnState || null,
             toolControlState: msg.toolControlState || null,
+            goalControlState: msg.goalControlState || null,
             browserSessionState: msg.browserSessionState || null,
+            approvalPreview: null,
             toolControlNotice: null,
+            runtimeWarning: null,
             preflightNotice: null,
             resumeNotice: msg.turnState?.recoveredFromPreviousRun
               ? 'Previous turn was interrupted. Its state was recovered locally so you can inspect the trace safely.'
@@ -157,11 +161,13 @@ export function useVSCodeBridge() {
             isStreaming: false,
             contextCompactionNotice: null,
             toolControlNotice: null,
+            runtimeWarning: null,
             preflightNotice: null,
             resumeNotice: null,
             taskDone: null,
             pendingQuestion: null,
             pendingQuestions: null,
+            approvalPreview: null,
             iterationCount: 0,
             turnState: buildTurnState(
               requestId,
@@ -258,10 +264,15 @@ export function useVSCodeBridge() {
             manifest: msg.manifest || undefined,
             controlState: msg.controlState || null,
             browserSessionState: msg.browserSessionState || null,
+            retryPolicy: msg.retryPolicy || null,
+            approvalPreview: msg.approvalPreview || null,
           };
 
           if (msg.controlState?.turnId) {
             runtime.patch({ toolControlState: msg.controlState });
+          }
+          if (msg.approvalPreview?.toolCallId) {
+            runtime.patch({ approvalPreview: msg.approvalPreview });
           }
           if (msg.browserSessionState && typeof msg.browserSessionState.active === 'boolean') {
             runtime.patch({ browserSessionState: msg.browserSessionState as BrowserSessionState });
@@ -329,6 +340,8 @@ export function useVSCodeBridge() {
                     manifest: msg.manifest || segment.tool.manifest,
                     controlState: msg.controlState || segment.tool.controlState || null,
                     browserSessionState: msg.browserSessionState || segment.tool.browserSessionState || null,
+                    retryPolicy: msg.retryPolicy || segment.tool.retryPolicy || null,
+                    approvalPreview: msg.approvalPreview || segment.tool.approvalPreview || null,
                     ...(msg.hunks !== undefined
                       ? {
                           hunks: msg.hunks,
@@ -437,6 +450,7 @@ export function useVSCodeBridge() {
                   finishedAt: msg.finishedAt || Date.now(),
                 }
               : runtimeRef.current.turnState,
+            approvalPreview: null,
           });
           runtime.updateMessages((previous) =>
             previous.map((message) => ({
@@ -506,8 +520,11 @@ export function useVSCodeBridge() {
             pendingQuestions: null,
             planSaved: null,
             turnState: null,
-            toolControlState: null,
+            toolControlState: msg.toolControlState || null,
+            goalControlState: msg.goalControlState || null,
             browserSessionState: msg.browserSessionState || null,
+            approvalPreview: null,
+            runtimeWarning: null,
             iterationCount: 0,
           });
           runtime.bumpScroll();
@@ -605,9 +622,21 @@ export function useVSCodeBridge() {
           }
           break;
 
+        case 'goalControlState':
+          if (msg?.activeGoal) {
+            runtime.patch({ goalControlState: msg });
+          }
+          break;
+
         case 'browserSessionState':
           if (typeof msg?.active === 'boolean') {
             runtime.patch({ browserSessionState: msg });
+          }
+          break;
+
+        case 'toolApprovalPreview':
+          if (msg?.toolCallId) {
+            runtime.patch({ approvalPreview: msg });
           }
           break;
 
@@ -615,6 +644,17 @@ export function useVSCodeBridge() {
           if (typeof msg?.message === 'string' && msg.message.trim()) {
             runtime.patch({
               toolControlNotice: {
+                severity: msg.severity === 'error' ? 'error' : msg.severity === 'info' ? 'info' : 'warning',
+                message: msg.message,
+              },
+            });
+          }
+          break;
+
+        case 'runtimeWarning':
+          if (typeof msg?.message === 'string' && msg.message.trim()) {
+            runtime.patch({
+              runtimeWarning: {
                 severity: msg.severity === 'error' ? 'error' : msg.severity === 'info' ? 'info' : 'warning',
                 message: msg.message,
               },

@@ -15,13 +15,14 @@ import { TurnTraceService } from '../services/TurnTraceService';
 import { ToolControlService } from '../services/ToolControlService';
 import { BrowserSessionService } from '../services/BrowserSessionService';
 import { setBrowserSessionService } from '../services/BrowserSessionProvider';
+import { ExternalToolRegistry } from '../services/ExternalToolRegistry';
 import { MessageStateStore } from './runtime/MessageStateStore';
 import { RuntimeEventBus } from './runtime/RuntimeEventBus';
 import { TaskRuntime } from './runtime/TaskRuntime';
 import { ToolExecutor } from './runtime/ToolExecutor';
 import { ToolPolicyService, type AutoApproveConfig } from './runtime/ToolPolicyService';
 import type { ToolArtifact, ToolExecutionResult, ToolManifest } from './types';
-import type { ToolCatalogEntry, ToolControlState, TurnPhase } from '../services/runtimeTypes';
+import type { GoalControlState, ToolCatalogEntry, ToolControlState, TurnPhase } from '../services/runtimeTypes';
 
 export class TaskController {
     private _view?: vscode.Webview;
@@ -35,6 +36,7 @@ export class TaskController {
     private pendingWriteProposals = new Map<string, any>();
     private activeAbortController?: AbortController;
     private lastToolControlState: ToolControlState | null = null;
+    private lastGoalControlState: GoalControlState | null = null;
     private toolCatalogCache: ToolCatalogEntry[] | null = null;
     private readonly messageStateStore: MessageStateStore;
     private readonly runtimeEventBus: RuntimeEventBus;
@@ -55,6 +57,11 @@ export class TaskController {
         this.checkpointManager = new CheckpointManager(_extensionContext);
         this.browserSessionService = new BrowserSessionService(this.storage);
         setBrowserSessionService(this.browserSessionService);
+        const externalToolEntries = new ExternalToolRegistry(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath)
+            .registerBindings(globalToolRegistry);
+        this.workspaceManager.setExternalReadOnlyToolNames(
+            externalToolEntries.map((entry) => entry.manifest.name)
+        );
         const ps = this.workspaceManager.getProviderState();
         this.llmService = new LLMService({
             providerId: ps.providerId,
@@ -66,6 +73,7 @@ export class TaskController {
         this.runtimeEventBus = new RuntimeEventBus(
             (turnId, type, payload) => this.emitTurnEvent(turnId, type, payload),
             (turnId, state) => this.emitToolControlState(turnId, state),
+            (turnId, state) => this.emitGoalControlState(turnId, state),
             (turnId, message, severity) => this.emitToolControlNotice(turnId, message, severity),
         );
         this.messageStateStore = new MessageStateStore(
@@ -74,6 +82,7 @@ export class TaskController {
             this.workspaceManager,
             this.traceService,
             () => this.lastToolControlState,
+            () => this.getCurrentGoalControlState(),
             () => this.browserSessionService.getState(),
             () => this.browserSessionService.getArtifactsIndex(),
         );
@@ -123,6 +132,7 @@ export class TaskController {
     public clearHistory() {
         this.workspaceManager.clearHistory();
         this.lastToolControlState = null;
+        this.lastGoalControlState = null;
         void this.browserSessionService.close();
     }
     public changeModel(model: string) { this.workspaceManager.changeModel(model); this.rebuildLLMService(); }
@@ -259,12 +269,18 @@ export class TaskController {
         const loaded = await this.messageStateStore.loadSession(sessionId);
         const meta = loaded.meta;
         const latestRuntimeSnapshot = loaded.payload.runtimeSnapshots[loaded.payload.runtimeSnapshots.length - 1];
+        this.lastToolControlState = latestRuntimeSnapshot?.toolControlState ?? null;
+        this.lastGoalControlState = latestRuntimeSnapshot?.goalControlState
+            ?? loaded.payload.goalSnapshots[loaded.payload.goalSnapshots.length - 1]
+            ?? this.buildFallbackGoalControlState();
         this._view.postMessage({
             type: 'sessionLoaded',
             sessionId,
             messages: loaded.messages,
             mode: loaded.payload.messageState.mode || meta?.mode || 'code',
             title: meta?.title ?? 'Chat',
+            toolControlState: this.lastToolControlState,
+            goalControlState: this.lastGoalControlState,
             browserSessionState: latestRuntimeSnapshot?.browserSessionState ?? null,
         });
         this._view.postMessage({
@@ -331,6 +347,7 @@ export class TaskController {
         const tokenInfo = this.workspaceManager.estimateTokenCount();
         const latestTrace = this.traceService.getLatestSummary();
         const currentTurnState = this.traceService.getCurrentTurnState();
+        const goalControlState = this.getCurrentGoalControlState();
         this._view.postMessage({
             type: 'initialState',
             history: historyForUi,
@@ -341,6 +358,7 @@ export class TaskController {
             latestTrace,
             turnState: currentTurnState,
             toolControlState: this.lastToolControlState,
+            goalControlState,
             browserSessionState: this.browserSessionService.getState(),
             toolCatalog: this.getToolCatalog(),
             providerCapabilities: listProviderCapabilities(),
@@ -461,6 +479,33 @@ export class TaskController {
         if (state) {
             this.emitTurnEvent(turnId, 'toolControlState', this.lastToolControlState);
         }
+    }
+
+    private emitGoalControlState(turnId: string, state: GoalControlState | null) {
+        this.lastGoalControlState = state
+            ? {
+                ...state,
+                checkpoints: state.checkpoints.map((checkpoint) => ({ ...checkpoint })),
+                driftWarnings: [...state.driftWarnings],
+            }
+            : null;
+        if (this.lastGoalControlState) {
+            this.emitTurnEvent(turnId, 'goalControlState', this.lastGoalControlState);
+        }
+    }
+
+    private getCurrentGoalControlState(): GoalControlState | null {
+        return this.lastGoalControlState ?? this.buildFallbackGoalControlState();
+    }
+
+    private buildFallbackGoalControlState(): GoalControlState {
+        return {
+            turnId: this.traceService.getCurrentTurnState()?.turnId,
+            activeGoal: this.workspaceManager.getPlanSummary() || 'Continue the current coding task.',
+            checkpoints: [],
+            driftWarnings: [],
+            recommendedNextStep: 'Use the latest result to choose the next concrete action.',
+        };
     }
 
     private emitToolControlNotice(turnId: string, message: string, severity: 'info' | 'warning' | 'error' = 'warning') {

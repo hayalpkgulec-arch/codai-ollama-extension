@@ -68,6 +68,7 @@ export function useVSCodeMessage() {
     setActiveFileContext,
     ollamaModels: extensionState.ollamaModels,
     providerInfo: extensionState.providerInfo,
+    toolCatalog: extensionState.toolCatalog,
     providerModelsById: extensionState.providerModelsById,
     providerModelFetchStateById: extensionState.providerModelFetchStateById,
     setProviderModels,

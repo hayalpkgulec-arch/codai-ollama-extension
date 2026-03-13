@@ -12,6 +12,7 @@ import type {
   ModelDef,
   ProviderModelsFetchState,
   ProviderSavedConfig,
+  ToolCatalogEntry,
 } from '../types';
 
 interface ProviderInfoState {
@@ -30,6 +31,7 @@ export interface ExtensionState {
   providerModelsById: Partial<Record<ProviderId, ModelDef[]>>;
   providerModelFetchStateById: Partial<Record<ProviderId, ProviderModelsFetchState>>;
   providerInfo: ProviderInfoState;
+  toolCatalog: ToolCatalogEntry[];
 }
 
 type ExtensionAction =
@@ -70,6 +72,7 @@ const initialState: ExtensionState = {
     baseUrl: defaultProvider?.baseUrl || 'http://localhost:11434',
     configs: {},
   },
+  toolCatalog: [],
 };
 
 const ExtensionStoreContext = createContext<ExtensionContextValue | null>(null);

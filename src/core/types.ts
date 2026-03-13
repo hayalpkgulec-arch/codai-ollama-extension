@@ -13,6 +13,10 @@ export interface ToolManifest {
     idempotent: boolean;
     sideEffectScope: ToolSideEffectScope;
     commandProfile?: 'safe' | 'interactive' | 'background' | 'destructive';
+    source?: 'builtin' | 'external';
+    readOnly?: boolean;
+    workspaceBoundaryLabel?: string;
+    targetTool?: string;
 }
 
 export interface ToolArtifact {

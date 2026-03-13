@@ -13,6 +13,7 @@ function createEventBus(events: Array<{ type: string; payload: any }>, controlSt
         (_turnId, state) => {
             controlStates.push(state);
         },
+        () => undefined,
         (_turnId, message, severity) => {
             events.push({ type: 'toolControlNotice', payload: { message, severity } });
         },
@@ -61,7 +62,7 @@ test('ToolExecutor compacts structured tool results and preserves checkpoints', 
     const events: Array<{ type: string; payload: any }> = [];
     const controlStates: any[] = [];
     const policy = new ToolPolicyService(
-        () => ({ read_file: false, write_file: true, run_command: false, web_fetch: false, all: false }),
+        () => ({ read_file: false, write_file: false, run_command: false, web_fetch: false, all: false }),
         (toolName) => ({
             name: toolName,
             category: 'write',
@@ -119,6 +120,7 @@ test('ToolExecutor compacts structured tool results and preserves checkpoints', 
     assert.equal(output.result.status, 'success');
     assert.equal(output.result.checkpointRefs?.[0], 'checkpoint-1');
     assert.ok(String(output.result.historyContent).includes('"checkpointId":"checkpoint-1"'));
+    assert.ok(events.some((event) => event.type === 'toolApprovalPreview'));
     assert.ok(events.some((event) => event.type === 'checkpointSaved'));
     assert.ok(events.some((event) => event.type === 'toolActivityDone'));
 });

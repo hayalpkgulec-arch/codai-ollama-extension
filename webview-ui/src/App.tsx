@@ -53,8 +53,11 @@ function AppShell() {
     latestTrace,
     turnState,
     toolControlState,
+    goalControlState,
     browserSessionState,
+    approvalPreview,
     toolControlNotice,
+    runtimeWarning,
     preflightNotice,
     resumeNotice,
     contextCompactionNotice,
@@ -63,6 +66,7 @@ function AppShell() {
     activeFileContext, setActiveFileContext,
     ollamaModels,
     providerInfo,
+    toolCatalog,
     model, setModel,
     providerModelsById,
     providerModelFetchStateById,
@@ -581,6 +585,8 @@ function AppShell() {
           isProcessing={isProcessing}
           messageCount={messages.length}
           tokenCount={tokenCount}
+          goalControlState={goalControlState}
+          browserActive={!!browserSessionState?.active}
         />
       )}
 
@@ -831,9 +837,13 @@ function AppShell() {
         latestTrace={latestTrace}
         turnState={turnState}
         toolControlState={toolControlState}
+        goalControlState={goalControlState}
         browserSessionState={browserSessionState}
+        approvalPreview={approvalPreview}
+        runtimeWarning={runtimeWarning}
         preflightNotice={preflightNotice}
         resumeNotice={resumeNotice}
+        toolCatalog={toolCatalog}
         onClose={() => setShowTraceDrawer(false)}
         onOpenTrace={handleOpenTrace}
       />

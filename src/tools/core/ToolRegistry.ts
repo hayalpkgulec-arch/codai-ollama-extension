@@ -2,14 +2,14 @@ import { ITool } from './BaseTool';
 import { Tool } from '../../core/types';
 import type { ToolManifest } from '../../core/types';
 import type { ToolCatalogEntry } from '../../services/runtimeTypes';
-import { buildToolCatalogEntry, getToolManifest } from './toolMetadata';
+import { getToolManifest } from './toolMetadata';
 
 export class ToolRegistry {
     private tools = new Map<string, ITool>();
 
     public registerTool(tool: ITool) {
         const definition = tool.definition;
-        definition.manifest = getToolManifest(definition.name);
+        definition.manifest = definition.manifest ?? getToolManifest(definition.name);
         this.tools.set(definition.name, tool);
     }
 
@@ -30,9 +30,10 @@ export class ToolRegistry {
     }
 
     public getToolCatalog(): ToolCatalogEntry[] {
-        return Array.from(this.tools.values()).map((tool) =>
-            buildToolCatalogEntry(tool.definition.name, tool.definition.description)
-        );
+        return Array.from(this.tools.values()).map((tool) => ({
+            manifest: tool.definition.manifest ?? getToolManifest(tool.definition.name),
+            description: tool.definition.description,
+        }));
     }
 
     public async executeTool(name: string, args: any): Promise<any> {

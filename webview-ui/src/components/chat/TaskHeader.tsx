@@ -3,8 +3,8 @@
  * Shows: session title, elapsed time, message count, token usage
  */
 import { useEffect, useState } from 'react';
-import { Clock, MessageSquare, Cpu } from 'lucide-react';
-import type { ContextWindowStats } from '../../types';
+import { Clock, MessageSquare, Cpu, Target, Globe } from 'lucide-react';
+import type { ContextWindowStats, GoalControlState } from '../../types';
 
 interface TaskHeaderProps {
   title?: string;
@@ -12,6 +12,8 @@ interface TaskHeaderProps {
   isProcessing: boolean;
   messageCount: number;
   tokenCount?: ContextWindowStats | null;
+  goalControlState?: GoalControlState | null;
+  browserActive?: boolean;
 }
 
 function useElapsed(startedAt: number | undefined, isProcessing: boolean): string | undefined {
@@ -46,10 +48,20 @@ function formatPercent(value: number): string {
   return `${Math.max(0, Math.min(100, Math.round(value)))}%`;
 }
 
-export function TaskHeader({ title, startedAt, isProcessing, messageCount, tokenCount }: TaskHeaderProps) {
+export function TaskHeader({
+  title,
+  startedAt,
+  isProcessing,
+  messageCount,
+  tokenCount,
+  goalControlState,
+  browserActive,
+}: TaskHeaderProps) {
   const elapsed = useElapsed(startedAt, isProcessing);
   const percentUsed = tokenCount?.percentUsed ?? 0;
   const percentLeft = Math.max(0, 100 - percentUsed);
+  const completedCheckpoints = goalControlState?.checkpoints.filter((checkpoint) => checkpoint.done).length ?? 0;
+  const totalCheckpoints = goalControlState?.checkpoints.length ?? 0;
 
   if (!title && messageCount === 0) return null;
 
@@ -78,6 +90,18 @@ export function TaskHeader({ title, startedAt, isProcessing, messageCount, token
               </div>
             </div>
           </div>
+        )}
+        {goalControlState?.activeGoal && (
+          <span className="task-header-count" title={goalControlState.activeGoal}>
+            <Target size={10} />
+            {totalCheckpoints > 0 ? `${completedCheckpoints}/${totalCheckpoints}` : 'goal'}
+          </span>
+        )}
+        {browserActive && (
+          <span className="task-header-count" title="Browser session active">
+            <Globe size={10} />
+            live
+          </span>
         )}
         {elapsed && (
           <span className="task-header-elapsed">

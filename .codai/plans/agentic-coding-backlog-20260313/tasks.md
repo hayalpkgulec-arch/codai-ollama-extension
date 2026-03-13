@@ -27,11 +27,11 @@
 
 ## v0.0.53 Goal Control And Extensibility
 
-- [ ] Add `GoalControlService` with active goal, checkpoints, progress, and drift warnings
-- [ ] Detect repeated host, tool, and failure loops and emit recovery hints
-- [ ] Add a read-only external tool registry with workspace boundary labeling
-- [ ] Add approval preview payloads for high-risk tools
-- [ ] Add retry policy definitions per tool family
+- [x] Add `GoalControlService` with active goal, checkpoints, progress, and drift warnings
+- [x] Detect repeated host, tool, and failure loops and emit recovery hints
+- [x] Add a read-only external tool registry with workspace boundary labeling
+- [x] Add approval preview payloads for high-risk tools
+- [x] Add retry policy definitions per tool family
 
 ## v0.0.54 Hardening Sprint
 
@@ -54,3 +54,4 @@
 - 2026-03-13: Completed the UI and test half of `v0.0.50` by adding dedicated `web_search` cards, richer `web_fetch` cards, and fixture-backed coverage for malformed pages, redirects, empty shells, timeouts, and binary responses.
 - 2026-03-13: Completed `v0.0.51` by adding a local-first browser session service, first-party browser tools, workspace-backed screenshot and console artifacts, runtime/browser trace state, and crash-recovery tests for browser cleanup flows.
 - 2026-03-13: Completed `v0.0.52` by splitting webview state into `ExtensionStore` and `ChatRuntimeStore`, moving provider/model fetch state into shared reducers, grouping runtime rows in chat, and expanding the trace/context drawers with richer runtime inspection details.
+- 2026-03-13: Completed `v0.0.53` by wiring a real `GoalControlService` into the runtime loop, persisting goal snapshots with sessions, emitting recovery/drift warnings into the trace UI, adding approval previews plus retry policies for risky tools, and supporting workspace-bound read-only external tool aliases through `.codai/external-tools.json`.

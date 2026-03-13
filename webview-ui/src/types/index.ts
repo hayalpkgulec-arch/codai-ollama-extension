@@ -111,6 +111,15 @@ export interface ToolManifest {
   idempotent: boolean;
   sideEffectScope: 'none' | 'filesystem' | 'process' | 'network' | 'workspace' | 'user';
   commandProfile?: 'safe' | 'interactive' | 'background' | 'destructive';
+  source?: 'builtin' | 'external';
+  readOnly?: boolean;
+  workspaceBoundaryLabel?: string;
+  targetTool?: string;
+}
+
+export interface ToolCatalogEntry {
+  manifest: ToolManifest;
+  description: string;
 }
 
 export interface ToolControlAlert {
@@ -140,6 +149,43 @@ export interface ToolControlState {
   alerts: ToolControlAlert[];
   focus: string;
   recommendedAction: string;
+}
+
+export interface ToolRetryPolicy {
+  maxAttempts: number;
+  backoffMs: number;
+  retryableFailures: Array<'none' | 'validation' | 'approval' | 'blocked' | 'execution' | 'provider' | 'abort' | 'timeout'>;
+}
+
+export interface ToolApprovalPreview {
+  turnId: string;
+  toolCallId: string;
+  toolName: string;
+  args: any;
+  manifest: ToolManifest;
+  autoApproved: boolean;
+  summary: string;
+  preview: string;
+  retryPolicy: ToolRetryPolicy;
+  boundaryLabel?: string;
+}
+
+export interface GoalControlCheckpoint {
+  id: string;
+  label: string;
+  done: boolean;
+}
+
+export interface GoalControlState {
+  turnId?: string;
+  activeGoal: string;
+  checkpoints: GoalControlCheckpoint[];
+  lastProgressAt?: number;
+  lastProgressNote?: string;
+  driftWarnings: string[];
+  recoveryHint?: string;
+  recommendedNextStep?: string;
+  driftScore?: number;
 }
 
 export interface BrowserSessionState {
@@ -231,6 +277,8 @@ export interface ToolCall {
   manifest?: ToolManifest;
   controlState?: ToolControlState | null;
   browserSessionState?: BrowserSessionState | null;
+  retryPolicy?: ToolRetryPolicy | null;
+  approvalPreview?: ToolApprovalPreview | null;
 }
 
 // ── Ordered timeline segments within a message ────────────────────────────

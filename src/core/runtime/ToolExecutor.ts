@@ -76,14 +76,23 @@ export class ToolExecutor {
 
     public async executeToolCall(input: ExecuteToolCallInput): Promise<ExecuteToolCallOutput> {
         const { turnId, iteration, toolCallId, toolName, toolArgs, toolControl } = input;
-        const policy = this.options.policyService.evaluate(toolControl, toolName, toolArgs);
+        const summary = buildToolSummary(toolName, toolArgs);
+        const policy = this.options.policyService.evaluate(toolControl, {
+            turnId,
+            toolCallId,
+            toolName,
+            args: toolArgs,
+            summary,
+        });
         const manifest = policy.manifest;
         const startedAt = Date.now();
-        const summary = buildToolSummary(toolName, toolArgs);
         const phaseId = `tool-${toolCallId || `${iteration}-${toolName}-${startedAt}-${Math.random().toString(36).slice(2, 6)}`}`;
         const controlStateBeforeExecution = toolControl.getState();
 
         this.options.eventBus.emitToolControlState(turnId, controlStateBeforeExecution);
+        if (policy.approvalPreview) {
+            this.options.eventBus.emit(turnId, 'toolApprovalPreview', policy.approvalPreview);
+        }
         if (policy.controlDecision.alerts.length > 0) {
             this.options.eventBus.emitToolControlNotice(
                 turnId,
@@ -107,6 +116,8 @@ export class ToolExecutor {
                 requiresApproval: policy.requiresApproval,
                 autoApproved: policy.autoApproved,
             },
+            approvalPreview: policy.approvalPreview,
+            retryPolicy: policy.retryPolicy,
         });
 
         if (!policy.controlDecision.allowed) {
@@ -146,6 +157,8 @@ export class ToolExecutor {
                 manifest,
                 controlState: blockedState,
                 errorMessage: blockedReason,
+                approvalPreview: policy.approvalPreview,
+                retryPolicy: policy.retryPolicy,
             });
             return {
                 phaseId,
@@ -187,6 +200,8 @@ export class ToolExecutor {
                 ...validationEnvelope,
                 manifest,
                 controlState: validationEnvelope.controlState,
+                approvalPreview: policy.approvalPreview,
+                retryPolicy: policy.retryPolicy,
             });
             this.options.eventBus.emitToolControlState(turnId, validationEnvelope.controlState ?? null);
             return {
@@ -245,6 +260,8 @@ export class ToolExecutor {
                 ...normalized,
                 manifest,
                 controlState: toolControlState,
+                approvalPreview: policy.approvalPreview,
+                retryPolicy: policy.retryPolicy,
             });
         } else {
             this.options.eventBus.emit(turnId, 'toolActivityDone', {
@@ -253,6 +270,8 @@ export class ToolExecutor {
                 ...normalized,
                 manifest,
                 controlState: toolControlState,
+                approvalPreview: policy.approvalPreview,
+                retryPolicy: policy.retryPolicy,
             });
         }
 

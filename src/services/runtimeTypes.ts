@@ -192,11 +192,20 @@ export interface ToolApprovalRequest {
     autoApproved: boolean;
 }
 
+export interface ToolApprovalPreview extends ToolApprovalRequest {
+    summary: string;
+    preview: string;
+    retryPolicy: ToolRetryPolicy;
+    boundaryLabel?: string;
+}
+
 export interface ToolPolicyDecision {
     manifest: ToolManifest;
     autoApproved: boolean;
     controlDecision: ToolControlDecision;
     requiresApproval: boolean;
+    retryPolicy: ToolRetryPolicy;
+    approvalPreview: ToolApprovalPreview | null;
 }
 
 export interface ToolRetryPolicy {
@@ -248,8 +257,11 @@ export interface GoalControlState {
     activeGoal: string;
     checkpoints: GoalControlCheckpoint[];
     lastProgressAt?: number;
+    lastProgressNote?: string;
     driftWarnings: string[];
     recoveryHint?: string;
+    recommendedNextStep?: string;
+    driftScore?: number;
 }
 
 export type BrowserActionName =

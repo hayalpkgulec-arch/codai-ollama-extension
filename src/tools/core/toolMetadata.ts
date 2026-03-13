@@ -42,7 +42,7 @@ const DEFAULT_TOOL_MANIFESTS: Record<string, ToolManifest> = {
 };
 
 export function getToolManifest(toolName: string): ToolManifest {
-    return DEFAULT_TOOL_MANIFESTS[toolName] ?? {
+    const manifest = DEFAULT_TOOL_MANIFESTS[toolName] ?? {
         name: toolName,
         category: 'read',
         riskLevel: 'medium',
@@ -51,6 +51,11 @@ export function getToolManifest(toolName: string): ToolManifest {
         producesCheckpoint: false,
         idempotent: false,
         sideEffectScope: 'workspace',
+    };
+    return {
+        ...manifest,
+        source: manifest.source ?? 'builtin',
+        readOnly: manifest.readOnly ?? manifest.category === 'read',
     };
 }
 

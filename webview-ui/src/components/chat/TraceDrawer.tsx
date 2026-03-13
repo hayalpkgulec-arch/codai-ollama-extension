@@ -1,5 +1,13 @@
 import { vscode } from '../../vscode';
-import type { BrowserSessionState, LatestTraceSummary, ToolControlState, TurnState } from '../../types';
+import type {
+  BrowserSessionState,
+  GoalControlState,
+  LatestTraceSummary,
+  ToolApprovalPreview,
+  ToolCatalogEntry,
+  ToolControlState,
+  TurnState,
+} from '../../types';
 
 interface PreflightNotice {
   severity: 'warning' | 'error';
@@ -12,9 +20,13 @@ interface TraceDrawerProps {
   latestTrace: LatestTraceSummary | null;
   turnState: TurnState | null;
   toolControlState: ToolControlState | null;
+  goalControlState: GoalControlState | null;
   browserSessionState: BrowserSessionState | null;
+  approvalPreview: ToolApprovalPreview | null;
+  runtimeWarning: { severity: 'info' | 'warning' | 'error'; message: string } | null;
   preflightNotice: PreflightNotice | null;
   resumeNotice: string | null;
+  toolCatalog: ToolCatalogEntry[];
   onClose: () => void;
   onOpenTrace: () => void;
 }
@@ -29,9 +41,13 @@ export function TraceDrawer({
   latestTrace,
   turnState,
   toolControlState,
+  goalControlState,
   browserSessionState,
+  approvalPreview,
+  runtimeWarning,
   preflightNotice,
   resumeNotice,
+  toolCatalog,
   onClose,
   onOpenTrace,
 }: TraceDrawerProps) {
@@ -40,7 +56,9 @@ export function TraceDrawer({
   const latestBlockedAlert = toolControlState?.alerts
     .filter((alert) => alert.code.toLowerCase().includes('block'))
     .slice(-1)[0] || null;
-  const recoveryHint = latestBlockedAlert?.suggestedAction || toolControlState?.recommendedAction || null;
+  const recoveryHint = goalControlState?.recoveryHint || latestBlockedAlert?.suggestedAction || toolControlState?.recommendedAction || null;
+  const externalTools = toolCatalog.filter((entry) => entry.manifest.source === 'external');
+  const completedCheckpoints = goalControlState?.checkpoints.filter((checkpoint) => checkpoint.done).length ?? 0;
 
   return (
     <aside className="side-drawer side-drawer--trace" aria-label="Debug trace drawer">
@@ -66,6 +84,12 @@ export function TraceDrawer({
       {preflightNotice && (
         <div className={`side-drawer-notice side-drawer-notice--${preflightNotice.severity}`}>
           {[...preflightNotice.errors, ...preflightNotice.warnings].join(' ')}
+        </div>
+      )}
+
+      {runtimeWarning && (
+        <div className={`side-drawer-notice side-drawer-notice--${runtimeWarning.severity === 'error' ? 'error' : 'warning'}`}>
+          {runtimeWarning.message}
         </div>
       )}
 
@@ -134,6 +158,56 @@ export function TraceDrawer({
           </div>
         </div>
 
+        {goalControlState && (
+          <div className="side-drawer-card">
+            <div className="side-drawer-card-title">Goal control</div>
+            <div className="side-drawer-meta-row">
+              <span>Active goal</span>
+              <strong>{goalControlState.activeGoal}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Checkpoint progress</span>
+              <strong>{goalControlState.checkpoints.length > 0 ? `${completedCheckpoints}/${goalControlState.checkpoints.length}` : 'No checkpoints yet'}</strong>
+            </div>
+            {goalControlState.lastProgressNote && (
+              <div className="side-drawer-meta-row">
+                <span>Last progress</span>
+                <strong>{goalControlState.lastProgressNote}</strong>
+              </div>
+            )}
+            {goalControlState.recommendedNextStep && (
+              <div className="side-drawer-meta-row">
+                <span>Next step</span>
+                <strong>{goalControlState.recommendedNextStep}</strong>
+              </div>
+            )}
+            {recoveryHint && (
+              <div className="side-drawer-meta-row">
+                <span>Recovery hint</span>
+                <strong>{recoveryHint}</strong>
+              </div>
+            )}
+            {goalControlState.driftWarnings.length > 0 && (
+              <div className="side-drawer-stack">
+                {goalControlState.driftWarnings.slice(-3).reverse().map((warning, index) => (
+                  <div key={`${warning}-${index}`} className="side-drawer-notice side-drawer-notice--warning">
+                    {warning}
+                  </div>
+                ))}
+              </div>
+            )}
+            {goalControlState.checkpoints.length > 0 && (
+              <div className="side-drawer-tags">
+                {goalControlState.checkpoints.map((checkpoint) => (
+                  <span key={checkpoint.id} className="side-drawer-tag">
+                    {checkpoint.done ? 'done' : 'todo'}: {checkpoint.label}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {toolControlState && (
           <div className="side-drawer-card">
             <div className="side-drawer-card-title">Tool control</div>
@@ -156,6 +230,10 @@ export function TraceDrawer({
             <div className="side-drawer-meta-row">
               <span>Failure streak</span>
               <strong>{toolControlState.consecutiveFailures}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>External tools</span>
+              <strong>{externalTools.length}</strong>
             </div>
             {latestBlockedAlert && (
               <div className="side-drawer-meta-row">
@@ -187,6 +265,41 @@ export function TraceDrawer({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {approvalPreview && (
+          <div className="side-drawer-card">
+            <div className="side-drawer-card-title">Approval preview</div>
+            <div className="side-drawer-meta-row">
+              <span>Tool</span>
+              <strong>{approvalPreview.toolName}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Preview</span>
+              <strong>{approvalPreview.preview}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Boundary</span>
+              <strong>{approvalPreview.boundaryLabel || '-'}</strong>
+            </div>
+            <div className="side-drawer-meta-row">
+              <span>Retry policy</span>
+              <strong>{approvalPreview.retryPolicy.maxAttempts} attempts / {approvalPreview.retryPolicy.backoffMs}ms backoff</strong>
+            </div>
+          </div>
+        )}
+
+        {externalTools.length > 0 && (
+          <div className="side-drawer-card">
+            <div className="side-drawer-card-title">External read-only tools</div>
+            <div className="side-drawer-tags">
+              {externalTools.map((entry) => (
+                <span key={entry.manifest.name} className="side-drawer-tag" title={entry.description}>
+                  {entry.manifest.name}: {entry.manifest.workspaceBoundaryLabel || 'Workspace-bound'}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 

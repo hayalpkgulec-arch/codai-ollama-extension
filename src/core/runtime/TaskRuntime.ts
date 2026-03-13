@@ -1,5 +1,6 @@
 import type { ProviderId } from '../../services/providerCatalog';
 import type { TurnPhase } from '../../services/runtimeTypes';
+import { GoalControlService } from '../../services/GoalControlService';
 import { ToolControlService } from '../../services/ToolControlService';
 import { globalToolRegistry } from '../../tools/index';
 import type { LLMService } from '../../services/LLMService';
@@ -45,6 +46,13 @@ export class TaskRuntime {
             traceFilePath: this.options.storage.getTraceFilePath(turnRequestId),
         });
         this.emitCurrentTurnState(turnRequestId);
+        const goalControl = new GoalControlService({
+            turnId: turnRequestId,
+            userText: message,
+            planSummary: this.options.workspaceManager.getPlanSummary(),
+            planTodos: this.options.workspaceManager.getPlanTodos(),
+        });
+        this.emitGoalControlUpdate(turnRequestId, goalControl);
 
         try {
             const envDetails = this.options.buildEnvDetails();
@@ -66,6 +74,8 @@ export class TaskRuntime {
             });
 
             if (!preflight.ok) {
+                goalControl.recordRuntimeFailure(preflight.errors.join(' '));
+                this.emitGoalControlUpdate(turnRequestId, goalControl);
                 this.options.eventBus.emit(turnRequestId, 'preflightWarning', {
                     severity: 'error',
                     warnings: preflight.warnings,
@@ -146,6 +156,8 @@ export class TaskRuntime {
                     const isRateLimit = isRateLimitError(messageText);
 
                     if (isAbort) {
+                        goalControl.recordRuntimeFailure(messageText || 'Task aborted');
+                        this.emitGoalControlUpdate(turnRequestId, goalControl);
                         await this.options.traceService.finish(turnRequestId, 'aborted', {
                             error: messageText || 'Task aborted',
                             budgetState: this.options.workspaceManager.estimateTokenCount(),
@@ -185,6 +197,8 @@ export class TaskRuntime {
                     }
 
                     continueLoop = false;
+                    goalControl.recordRuntimeFailure(messageText || 'LLM request failed');
+                    this.emitGoalControlUpdate(turnRequestId, goalControl);
                     await this.options.traceService.finish(turnRequestId, 'failed', {
                         error: messageText || 'LLM request failed',
                         budgetState: this.options.workspaceManager.estimateTokenCount(),
@@ -217,6 +231,8 @@ export class TaskRuntime {
 
                     for (const toolCall of toolCalls) {
                         const toolArgs = parseToolArguments(toolCall.function.arguments);
+                        goalControl.recordToolStart(toolCall.function.name, toolArgs, toolControl.getState());
+                        this.emitGoalControlUpdate(turnRequestId, goalControl);
                         const execution = await this.options.toolExecutor.executeToolCall({
                             turnId: turnRequestId,
                             iteration,
@@ -237,8 +253,17 @@ export class TaskRuntime {
                         });
                         await this.options.workspaceManager.persistState();
                         activePhaseId = execution.phaseId;
+                        goalControl.recordToolResult({
+                            toolName: execution.toolName,
+                            args: toolArgs,
+                            result: execution.result,
+                            controlState: execution.result.controlState ?? toolControl.getState(),
+                        });
+                        this.emitGoalControlUpdate(turnRequestId, goalControl);
 
                         if (execution.result.blocked && execution.result.stopTurn) {
+                            goalControl.recordAwaitingUser(execution.result.errorMessage || 'Tool execution was blocked and needs user direction.');
+                            this.emitGoalControlUpdate(turnRequestId, goalControl);
                             await this.transitionTurnPhase(turnRequestId, 'awaiting_user', {
                                 budgetState: this.options.workspaceManager.estimateTokenCount(),
                                 activeToolCallIds: [],
@@ -263,6 +288,11 @@ export class TaskRuntime {
                                 toolArgs.todos,
                                 typeof toolArgs.summary === 'string' ? toolArgs.summary : ''
                             );
+                            goalControl.recordTaskNotes(
+                                toolArgs.todos,
+                                typeof toolArgs.summary === 'string' ? toolArgs.summary : ''
+                            );
+                            this.emitGoalControlUpdate(turnRequestId, goalControl);
                             this.options.eventBus.emit(turnRequestId, 'todoUpdate', {
                                 todos: toolArgs.todos,
                                 summary: toolArgs.summary || '',
@@ -282,6 +312,8 @@ export class TaskRuntime {
                         }
 
                         if (STOP_TOOLS.includes(execution.toolName)) {
+                            goalControl.recordAwaitingUser('The runtime is waiting for user input before continuing.');
+                            this.emitGoalControlUpdate(turnRequestId, goalControl);
                             await this.transitionTurnPhase(turnRequestId, 'awaiting_user', {
                                 budgetState: this.options.workspaceManager.estimateTokenCount(),
                             });
@@ -297,6 +329,8 @@ export class TaskRuntime {
                             ? (lastContentSnapshot || '')
                             : JSON.stringify(rawFinalContent);
                     this.options.workspaceManager.appendToHistory({ role: 'assistant', content: finalContent });
+                    goalControl.recordAssistantResponse(finalContent);
+                    this.emitGoalControlUpdate(turnRequestId, goalControl);
                     this.options.eventBus.emit(turnRequestId, 'finalResponse', { content: finalContent });
                     await this.options.workspaceManager.persistState();
                     await this.options.traceService.finish(turnRequestId, 'completed', {
@@ -310,6 +344,8 @@ export class TaskRuntime {
             await this.emitTerminalTurnUpdates(turnRequestId);
         } catch (error) {
             const messageText = error instanceof Error ? error.message : 'Unknown error';
+            goalControl.recordRuntimeFailure(messageText);
+            this.emitGoalControlUpdate(turnRequestId, goalControl);
             await this.options.traceService.finish(turnRequestId, 'failed', {
                 error: messageText,
                 budgetState: this.options.workspaceManager.estimateTokenCount(),
@@ -329,6 +365,13 @@ export class TaskRuntime {
         const state = this.options.traceService.getCurrentTurnState();
         if (!state || state.turnId !== turnId) return;
         this.options.eventBus.emit(turnId, 'turnState', state);
+    }
+
+    private emitGoalControlUpdate(turnId: string, goalControl: GoalControlService) {
+        this.options.eventBus.emitGoalControlState(turnId, goalControl.getState());
+        for (const notice of goalControl.flushNotices()) {
+            this.options.eventBus.emit(turnId, 'runtimeWarning', notice);
+        }
     }
 
     private async emitTerminalTurnUpdates(turnId: string) {

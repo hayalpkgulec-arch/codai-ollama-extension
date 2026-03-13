@@ -553,6 +553,8 @@ export function createFallbackToolManifest(toolName: string): ToolManifest {
         producesCheckpoint: false,
         idempotent: false,
         sideEffectScope: 'workspace',
+        source: 'builtin',
+        readOnly: false,
     };
 }
 

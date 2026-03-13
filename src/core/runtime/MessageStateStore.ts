@@ -3,6 +3,7 @@ import type { AgentMode } from '../types';
 import type {
     BrowserArtifactEntry,
     BrowserSessionState,
+    GoalControlState,
     LatestTraceSummary,
     RuntimeSnapshot,
     StoredSessionHistory,
@@ -30,6 +31,7 @@ export class MessageStateStore {
         private readonly workspaceManager: WorkspaceManager,
         private readonly traceService: TurnTraceService,
         private readonly getToolControlState: () => ToolControlState | null,
+        private readonly getGoalControlState: () => GoalControlState | null,
         private readonly getBrowserSessionState: () => BrowserSessionState | null,
         private readonly getBrowserArtifactsIndex: () => BrowserArtifactEntry[],
     ) {}
@@ -116,17 +118,18 @@ export class MessageStateStore {
     }
 
     private buildStoredSessionHistory(messages: any[]): StoredSessionHistory {
+        const goalControlState = this.getGoalControlState() ?? {
+            turnId: this.traceService.getCurrentTurnState()?.turnId,
+            activeGoal: this.workspaceManager.getPlanSummary() || 'Continue the current coding task.',
+            checkpoints: [],
+            driftWarnings: [],
+        };
         const runtimeSnapshots: RuntimeSnapshot[] = [{
             capturedAt: new Date().toISOString(),
             turnState: this.traceService.getCurrentTurnState(),
             latestTrace: this.traceService.getLatestSummary(),
             toolControlState: this.getToolControlState(),
-            goalControlState: {
-                turnId: this.traceService.getCurrentTurnState()?.turnId,
-                activeGoal: this.workspaceManager.getPlanSummary() || 'Continue the current coding task.',
-                checkpoints: [],
-                driftWarnings: [],
-            },
+            goalControlState,
             browserSessionState: this.getBrowserSessionState() ?? {
                 active: false,
                 artifactCount: 0,
@@ -178,7 +181,13 @@ export class MessageStateStore {
                 },
                 runtimeSnapshots: Array.isArray(stored.runtimeSnapshots) ? stored.runtimeSnapshots : [],
                 browserArtifactsIndex: Array.isArray(stored.browserArtifactsIndex) ? stored.browserArtifactsIndex : [],
-                goalSnapshots: Array.isArray(stored.goalSnapshots) ? stored.goalSnapshots : [],
+                goalSnapshots: Array.isArray(stored.goalSnapshots)
+                    ? stored.goalSnapshots
+                    : Array.isArray(stored.runtimeSnapshots)
+                        ? stored.runtimeSnapshots
+                            .map((snapshot: any) => snapshot?.goalControlState)
+                            .filter((snapshot: unknown) => Boolean(snapshot))
+                        : [],
                 savedAt: typeof stored.savedAt === 'string' ? stored.savedAt : new Date().toISOString(),
             };
         }
@@ -198,7 +207,13 @@ export class MessageStateStore {
                 },
                 runtimeSnapshots: Array.isArray(stored.runtimeSnapshots) ? stored.runtimeSnapshots : [],
                 browserArtifactsIndex: Array.isArray(stored.browserArtifactsIndex) ? stored.browserArtifactsIndex : [],
-                goalSnapshots: Array.isArray(stored.goalSnapshots) ? stored.goalSnapshots : [],
+                goalSnapshots: Array.isArray(stored.goalSnapshots)
+                    ? stored.goalSnapshots
+                    : Array.isArray(stored.runtimeSnapshots)
+                        ? stored.runtimeSnapshots
+                            .map((snapshot: any) => snapshot?.goalControlState)
+                            .filter((snapshot: unknown) => Boolean(snapshot))
+                        : [],
                 savedAt: typeof stored.savedAt === 'string' ? stored.savedAt : new Date().toISOString(),
             };
         }

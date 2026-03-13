@@ -11,8 +11,10 @@ import type {
   ChatMessage,
   ContextPreviewPayload,
   ContextWindowStats,
+  GoalControlState,
   LatestTraceSummary,
   PlanSavedPayload,
+  ToolApprovalPreview,
   ToolControlState,
   TurnState,
   WizardQuestion,
@@ -32,8 +34,11 @@ export interface ChatRuntimeState {
   latestTrace: LatestTraceSummary | null;
   turnState: TurnState | null;
   toolControlState: ToolControlState | null;
+  goalControlState: GoalControlState | null;
   browserSessionState: BrowserSessionState | null;
+  approvalPreview: ToolApprovalPreview | null;
   toolControlNotice: { severity: 'info' | 'warning' | 'error'; message: string } | null;
+  runtimeWarning: { severity: 'info' | 'warning' | 'error'; message: string } | null;
   preflightNotice: { severity: 'warning' | 'error'; warnings: string[]; errors: string[] } | null;
   resumeNotice: string | null;
   contextCompactionNotice: string | null;
@@ -74,8 +79,11 @@ const initialState: ChatRuntimeState = {
   latestTrace: null,
   turnState: null,
   toolControlState: null,
+  goalControlState: null,
   browserSessionState: null,
+  approvalPreview: null,
   toolControlNotice: null,
+  runtimeWarning: null,
   preflightNotice: null,
   resumeNotice: null,
   contextCompactionNotice: null,

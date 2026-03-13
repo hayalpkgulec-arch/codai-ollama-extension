@@ -1,7 +1,7 @@
 import type { ToolManifest } from '../types';
 import type { ToolControlService } from '../../services/ToolControlService';
-import type { ToolPolicyDecision } from '../../services/runtimeTypes';
-import { createFallbackToolManifest } from './RuntimeUtils';
+import type { ToolApprovalPreview, ToolPolicyDecision, ToolRetryPolicy } from '../../services/runtimeTypes';
+import { buildToolSummary, createFallbackToolManifest } from './RuntimeUtils';
 
 export interface AutoApproveConfig {
     read_file: boolean;
@@ -9,6 +9,14 @@ export interface AutoApproveConfig {
     run_command: boolean;
     web_fetch: boolean;
     all: boolean;
+}
+
+interface EvaluateToolPolicyInput {
+    turnId: string;
+    toolCallId: string;
+    toolName: string;
+    args: any;
+    summary?: string;
 }
 
 export class ToolPolicyService {
@@ -40,16 +48,122 @@ export class ToolPolicyService {
         return false;
     }
 
-    public evaluate(toolControl: ToolControlService, toolName: string, args: any): ToolPolicyDecision {
-        const manifest = this.getManifest(toolName);
-        const autoApproved = this.isAutoApproved(toolName);
-        const controlDecision = toolControl.beforeToolExecution(toolName, args, manifest);
+    public evaluate(toolControl: ToolControlService, input: EvaluateToolPolicyInput): ToolPolicyDecision {
+        const manifest = this.getManifest(input.toolName);
+        const autoApproved = this.isAutoApproved(input.toolName);
+        const controlDecision = toolControl.beforeToolExecution(input.toolName, input.args, manifest);
+        const retryPolicy = this.getRetryPolicy(input.toolName, manifest);
+        const requiresApproval = manifest.requiresApproval && !autoApproved;
 
         return {
             manifest,
             autoApproved,
             controlDecision,
-            requiresApproval: manifest.requiresApproval && !autoApproved,
+            requiresApproval,
+            retryPolicy,
+            approvalPreview: requiresApproval
+                ? this.buildApprovalPreview({
+                    turnId: input.turnId,
+                    toolCallId: input.toolCallId,
+                    toolName: input.toolName,
+                    args: input.args,
+                    manifest,
+                    autoApproved,
+                    retryPolicy,
+                    summary: input.summary,
+                })
+                : null,
         };
     }
+
+    private getRetryPolicy(toolName: string, manifest: ToolManifest): ToolRetryPolicy {
+        if (toolName === 'run_command') {
+            return {
+                maxAttempts: 2,
+                backoffMs: 1200,
+                retryableFailures: ['timeout', 'abort'],
+            };
+        }
+
+        if (manifest.category === 'web') {
+            return {
+                maxAttempts: 2,
+                backoffMs: 900,
+                retryableFailures: ['execution', 'provider', 'timeout'],
+            };
+        }
+
+        if (manifest.category === 'read') {
+            return {
+                maxAttempts: 2,
+                backoffMs: 250,
+                retryableFailures: ['execution', 'timeout'],
+            };
+        }
+
+        if (manifest.category === 'write') {
+            return {
+                maxAttempts: 1,
+                backoffMs: 0,
+                retryableFailures: [],
+            };
+        }
+
+        return {
+            maxAttempts: 1,
+            backoffMs: 0,
+            retryableFailures: [],
+        };
+    }
+
+    private buildApprovalPreview(input: {
+        turnId: string;
+        toolCallId: string;
+        toolName: string;
+        args: any;
+        manifest: ToolManifest;
+        autoApproved: boolean;
+        retryPolicy: ToolRetryPolicy;
+        summary?: string;
+    }): ToolApprovalPreview {
+        const summary = input.summary || buildToolSummary(input.toolName, input.args);
+        return {
+            turnId: input.turnId,
+            toolCallId: input.toolCallId,
+            toolName: input.toolName,
+            args: input.args,
+            manifest: input.manifest,
+            autoApproved: input.autoApproved,
+            summary,
+            preview: buildPreviewText(input.toolName, input.args, summary),
+            boundaryLabel: input.manifest.workspaceBoundaryLabel || describeBoundary(input.manifest),
+            retryPolicy: input.retryPolicy,
+        };
+    }
+}
+
+function buildPreviewText(toolName: string, args: any, summary: string): string {
+    if (toolName === 'run_command') {
+        return `Command: ${String(args?.command || '').trim() || summary}`;
+    }
+    if (toolName === 'write_file' || toolName === 'append_to_file' || toolName === 'find_and_replace') {
+        return `Path: ${String(args?.path || args?.file_path || '').trim() || summary}`;
+    }
+    if (toolName === 'delete_file' || toolName === 'rename_file') {
+        return `Target: ${String(args?.path || args?.oldPath || '').trim() || summary}`;
+    }
+    if (toolName.startsWith('browser_')) {
+        return `Browser action: ${summary}`;
+    }
+    return summary;
+}
+
+function describeBoundary(manifest: ToolManifest): string {
+    if (manifest.workspaceBoundaryLabel) return manifest.workspaceBoundaryLabel;
+    if (manifest.sideEffectScope === 'filesystem') return 'Workspace filesystem';
+    if (manifest.sideEffectScope === 'process') return 'Local process execution';
+    if (manifest.sideEffectScope === 'network') return 'Network access';
+    if (manifest.sideEffectScope === 'workspace') return 'Workspace state';
+    if (manifest.readOnly) return 'Read-only';
+    return 'User-visible action';
 }
