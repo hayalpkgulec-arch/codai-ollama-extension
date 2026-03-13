@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.60] - 2026-03-13
+### Added
+- Added a native VS Code OSS workbench contribution that moves the CodAI extension view into the right auxiliary pane and opens it as the active AI lane on startup
+
+### Changed
+- The CodAI extension now contributes its primary view to the secondary sidebar instead of the activity bar, making the forked IDE layout align with a right-side AI workflow
+- The fork start script now compiles and launches the local CodAI extension in development mode so the right AI pane is backed by the real CodAI runtime, not a mock shell
+- The first shell styling pass pushed the fork workbench toward a darker, softer Cursor/Dvina baseline across the titlebar, rails, sidebars, bottom panel, and editor tabs
+
+---
+
 ## [0.0.59] - 2026-03-13
 ### Added
 - Added a VS Code OSS fork bootstrap script at `scripts/bootstrap-vscode-fork.ps1` plus `npm run ide:fork:bootstrap` so the new desktop direction can start from a real upstream base

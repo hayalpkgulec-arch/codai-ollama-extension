@@ -37,6 +37,7 @@ apps/**
 packages/**
 .upstream/**
 .forks/**
+.tools/**
 .codai/**
 scripts/**
 

@@ -1,5 +1,5 @@
 param(
-  [string]$TargetDir = ".upstream/vscode",
+  [string]$TargetDir = "..\codai-vscode-oss",
   [string]$RepositoryUrl = "https://github.com/microsoft/vscode.git",
   [string]$Branch = "main",
   [switch]$StatusOnly
@@ -12,8 +12,9 @@ function Write-Status {
   Write-Host "[codai-fork] $Message"
 }
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$resolvedTarget = Join-Path $repoRoot $TargetDir
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
+$legacyTarget = [System.IO.Path]::GetFullPath((Join-Path $repoRoot ".upstream\vscode"))
+$resolvedTarget = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $TargetDir))
 $targetParent = Split-Path $resolvedTarget -Parent
 
 if (-not (Test-Path $targetParent)) {
@@ -22,6 +23,17 @@ if (-not (Test-Path $targetParent)) {
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
   throw "git is required to bootstrap the VS Code OSS fork."
+}
+
+if ($resolvedTarget -ne $legacyTarget -and -not (Test-Path $resolvedTarget) -and (Test-Path $legacyTarget)) {
+  if ($StatusOnly) {
+    Write-Status "Legacy nested checkout found at $legacyTarget"
+    Write-Status "Default fork path is now $resolvedTarget to avoid TypeScript collisions with the main repo."
+    exit 0
+  }
+
+  Write-Status "Migrating legacy nested checkout from $legacyTarget to $resolvedTarget"
+  Move-Item -Path $legacyTarget -Destination $resolvedTarget
 }
 
 if (-not (Test-Path $resolvedTarget)) {

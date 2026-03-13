@@ -8,6 +8,7 @@ CodAI Desktop will now be a VS Code OSS fork with CodAI-specific product layers 
 
 - Use VS Code OSS for the workbench, editor, terminal, panels, layout system, and native desktop behavior
 - Use CodAI shared runtime for the model/provider/tool/trace layer
+- Optimize for a GUI-first agentic coding IDE in the Dvina/Cursor class, where sessions, review, trace, and agent actions are first-class workbench surfaces
 - Add CodAI product surfaces where Cursor differentiates:
   - chat and composer
   - review and changes lane
@@ -19,8 +20,8 @@ CodAI Desktop will now be a VS Code OSS fork with CodAI-specific product layers 
 
 ### Upstream Base
 
-- Clone Microsoft VS Code OSS into `.upstream/vscode`
-- Keep it ignored in the main repository
+- Clone Microsoft VS Code OSS into a sibling folder outside the main repo root, defaulting to `..\codai-vscode-oss`
+- Keep it ignored in the main repository and isolated from the extension repo's `node_modules`
 - Maintain a CodAI branch inside that clone for workbench/product patches
 
 ### CodAI Overlay
@@ -32,7 +33,7 @@ CodAI Desktop will now be a VS Code OSS fork with CodAI-specific product layers 
 ### Integration Layers
 
 1. Workbench host integration
-- Activity bar / sidebar entry points for CodAI
+- Right auxiliary bar entry point for CodAI chat plus sidebar/thread surfaces
 - Secondary side panel or right panel entry for Review / Trace / Changes
 - Bottom panel integration for terminal-aware tool output when needed
 
@@ -45,6 +46,7 @@ CodAI Desktop will now be a VS Code OSS fork with CodAI-specific product layers 
 - Agent timeline and composer
 - Review lane with changed files, diff summaries, and checkpoint groups
 - Trace lane with tool calls, shell metadata, provider events, and recovery hints
+- Multi-session workflow primitives that feel native in the workbench instead of bolted onto a sidebar-only extension surface
 
 ## Fork Strategy
 
@@ -70,11 +72,13 @@ CodAI Desktop will now be a VS Code OSS fork with CodAI-specific product layers 
 - Move beyond extension-style surfaces where needed for a Cursor-like experience
 - Tighten Ask -> Edit -> Review loop
 - Add review-first diff UX, tool traces, and richer agent controls directly into the workbench
+- Bring in GUI-first traits from Dvina-class tools: persistent session switching, visual agent affordances, and strong review visibility without hiding the editor
 
 ## Constraints
 
 - Keep the extension shippable while the fork spins up
 - Do not vendor the upstream repo into the published extension artifact
+- Do not nest the upstream fork under the extension repo root; the upstream TypeScript build must stay isolated from the extension workspace
 - Keep runtime, tool, and trace behavior local-first
 - Avoid forking faster than we can maintain; patch discipline matters more than breadth
 
@@ -87,3 +91,7 @@ CodAI Desktop will now be a VS Code OSS fork with CodAI-specific product layers 
 ## Progress Notes
 
 - 2026-03-13: Added the fork bootstrap script and used it to create a local shallow clone of VS Code OSS under `.upstream/vscode`. The next implementation slice should work against that tree and stop spending product effort on the rejected custom shell.
+- 2026-03-13: The first upstream build surfaced a real isolation problem: nesting the fork inside this repository let the extension workspace leak `@types/vscode` into upstream extension compiles. The default fork location is now moved outside the repo root to keep the VS Code OSS workspace clean.
+- 2026-03-13: The design north star is now explicitly GUI-first and session-centric. The fork should evolve toward Dvina/Cursor-level native workbench flows, not back toward a webview-style assistant shell.
+- 2026-03-13: Added the first workbench patch map to ground the fork effort in concrete VS Code OSS files and surfaces. This keeps the next implementation slice focused on native activity bar, sidebar, auxiliary bar, chat, SCM, and comments primitives instead of abstract shell ideas.
+- 2026-03-13: The first native shell pass moved CodAI into the auxiliary right lane and made the fork launch path load the local CodAI extension as the active AI surface. The next design slice should make the CodAI webview feel more native inside that lane and align review/trace surfaces around it.

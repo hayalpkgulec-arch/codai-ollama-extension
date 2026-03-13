@@ -72,9 +72,19 @@ Current roadmap is split between the agent/runtime backlog and the new VS Code O
 - [fork requirements](.codai/plans/vscode-fork-20260313/requirements.md)
 - [fork design](.codai/plans/vscode-fork-20260313/design.md)
 - [fork tasks](.codai/plans/vscode-fork-20260313/tasks.md)
+- [fork patch map](.codai/plans/vscode-fork-20260313/patch-map.md)
 
 To bootstrap the upstream VS Code OSS base for the desktop fork:
 
 ```powershell
 npm run ide:fork:bootstrap
+```
+
+The fork now lives in a sibling folder outside this repository by default: `..\codai-vscode-oss`.
+That avoids TypeScript ambient type collisions between the main extension repo and the VS Code OSS source tree.
+
+To launch the local fork with the expected Node 22 + Visual Studio environment:
+
+```powershell
+npm run ide:fork:start
 ```

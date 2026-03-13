@@ -2,7 +2,7 @@
   "name": "codai-ollama-tools",
   "displayName": "CodAI Ollama Tools",
   "description": "AI-powered coding assistant with multi-provider support",
-  "version": "0.0.59",
+  "version": "0.0.60",
   "publisher": "codai",
   "repository": {
     "type": "git",
@@ -22,7 +22,7 @@
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "codai-sidebar",
           "title": "CodAI",
@@ -96,6 +96,7 @@
     "build:core": "npx tsc -p packages/core/tsconfig.json",
     "build:desktop": "npm --prefix apps/desktop run build",
     "ide:fork:bootstrap": "powershell -ExecutionPolicy Bypass -File scripts/bootstrap-vscode-fork.ps1",
+    "ide:fork:start": "powershell -ExecutionPolicy Bypass -File scripts/start-vscode-fork.ps1",
     "compile:webview": "cd webview-ui && npm run build",
     "compile:extension": "tsc -p ./",
     "compile": "npm run compile:webview && npm run compile:extension",

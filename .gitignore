@@ -7,3 +7,4 @@ out/
 nul
 .upstream/
 .forks/
+.tools/

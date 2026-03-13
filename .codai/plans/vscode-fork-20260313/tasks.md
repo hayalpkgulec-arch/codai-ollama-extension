@@ -8,13 +8,16 @@
 - [x] Add npm scripts and ignore rules for the fork bootstrap path
 - [x] Run the bootstrap and verify the upstream tree exists locally
 - [x] Keep the upstream fork path out of the shipped VSIX
+- [x] Add a repeatable local start script for the fork runtime environment
+- [x] Move the default fork checkout outside the main repo root to avoid VS Code type collisions during upstream builds
 
 ## Phase 1 Upstream Mapping
 
-- [ ] Build the upstream VS Code OSS checkout locally
-- [ ] Map the workbench injection points for CodAI surfaces
-- [ ] Document which native panels/views can be reused before deeper shell patches
-- [ ] Define the minimal first fork milestone: explorer + editor + CodAI chat + review + trace
+- [x] Build the upstream VS Code OSS checkout locally
+- [x] Map the workbench injection points for CodAI surfaces
+- [x] Document which native panels/views can be reused before deeper shell patches
+- [x] Define the minimal first fork milestone: explorer + editor + CodAI chat + review + trace
+- [x] Define the first GUI-first fork milestone: threads + native composer + review lane + trace lane + session switching
 
 ## Phase 2 Shared Runtime Host
 
@@ -25,6 +28,8 @@
 
 ## Phase 3 CodAI Workbench Surfaces
 
+- [x] Move CodAI into the native right auxiliary pane instead of the activity bar
+- [x] Add the first Cursor/Dvina-style solid dark workbench pass across titlebar, rails, sidebars, panels, and tabs
 - [ ] Add CodAI thread/task history surface inside the fork
 - [ ] Add a native-feeling chat/composer surface
 - [ ] Add Review / Changes / Trace panels wired to shared runtime data
@@ -46,3 +51,8 @@
 - 2026-03-13: Pivoted away from the custom Electron + Monaco shell after it failed the expected Cursor-like quality bar. Added the first fork roadmap, marked the previous plan as superseded, and introduced a bootstrap script plus package wiring for a VS Code OSS-based CodAI desktop direction.
 - 2026-03-13: Bootstrapped a local VS Code OSS source tree into `.upstream/vscode` from `microsoft/vscode` main (`df64f4f`). The next implementation slice should start mapping actual workbench injection points instead of extending the prototype desktop shell.
 - 2026-03-13: Fixed the first maintenance issue caused by the fork pivot. VSIX packaging had started walking the local upstream checkout, so `.vscodeignore` was updated to exclude the fork source and keep extension packaging fast and bounded.
+- 2026-03-13: Finished the first local developer bootstrap for the fork path. Added a repeatable start script, isolated a portable Node 22 toolchain under `.tools`, and resolved the Windows-side blockers around Spectre libraries and Visual Studio 18 compatibility so the upstream fork can actually be launched for testing.
+- 2026-03-13: Identified the first real fork-start regression: a nested checkout under `.upstream/vscode` let the main repo `node_modules/@types/vscode` leak into upstream extension builds, causing hundreds of duplicate identifier errors. The default bootstrap/start path now moves the fork to a sibling folder outside the repo root.
+- 2026-03-13: Verified the external fork path fix by compiling VS Code OSS successfully from `..\codai-vscode-oss` and launching `Code - OSS` from that sibling checkout. The next slice should map GUI-first CodAI surfaces into the native workbench instead of spending more time on the discarded custom shell.
+- 2026-03-13: Added the first native workbench patch map. The roadmap now points directly at `activitybar`, `sidebar`, `panel`, `auxiliarybar`, `chat`, `scm`, and `comments` as the concrete fork surfaces for the first CodAI GUI-first milestone.
+- 2026-03-13: Delivered the first native right-lane CodAI slice. The extension now contributes its main view to the secondary sidebar, the fork opens it as the active auxiliary-bar AI surface on launch, and the shell styling pass now targets a darker, softer Cursor/Dvina baseline.
