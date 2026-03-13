@@ -241,10 +241,30 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
             // (eski) Ollama model listesini çek — geriye dönük uyum
             case 'fetchOllamaModels': {
                 try {
-                    const models = await controller.fetchProviderModels();
-                    webview.postMessage({ type: 'ollamaModels', models });
+                    const ollamaConfig = controller.getProviderConfig('ollama');
+                    const models = await controller.fetchProviderModels({
+                        providerId: 'ollama',
+                        apiKey: ollamaConfig.apiKey,
+                        apiKeys: ollamaConfig.apiKeys,
+                        baseUrl: ollamaConfig.baseUrl,
+                    });
+                    webview.postMessage({ type: 'ollamaModels', models, error: null });
+                    webview.postMessage({
+                        type: 'providerModels',
+                        requestId: data.requestId,
+                        providerId: 'ollama',
+                        models,
+                        error: null,
+                    });
                 } catch (e: any) {
                     webview.postMessage({ type: 'ollamaModels', models: [], error: e.message });
+                    webview.postMessage({
+                        type: 'providerModels',
+                        requestId: data.requestId,
+                        providerId: 'ollama',
+                        models: [],
+                        error: e.message,
+                    });
                 }
                 break;
             }

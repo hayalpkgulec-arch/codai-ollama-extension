@@ -52,6 +52,7 @@ export const PROVIDERS: ProviderDef[] = SHARED_PROVIDERS.map((provider) => ({
 }));
 
 interface ProviderSettingsProps {
+    open: boolean;
     currentProviderId: ProviderId;
     hasApiKey: boolean;
     currentBaseUrl: string;
@@ -94,6 +95,7 @@ const buildProviderDrafts = (
     ) as Record<ProviderId, ProviderDraft>;
 
 export const ProviderSettings = memo(({
+    open,
     currentProviderId,
     hasApiKey,
     currentBaseUrl,
@@ -185,43 +187,58 @@ export const ProviderSettings = memo(({
 
     useEffect(() => {
         const nextProvider = PROVIDERS.find((provider) => provider.id === selectedId);
-        if (nextProvider) {
-            if (nextProvider.defaultModels.length > 0) {
-                setSelectedModel((currentSelectedModel) =>
-                    nextProvider.defaultModels.some((model) => model.id === currentSelectedModel)
-                        ? currentSelectedModel
-                        : nextProvider.defaultModels[0].id
-                );
-            }
+        if (nextProvider?.defaultModels.length) {
+            setSelectedModel((currentSelectedModel) =>
+                nextProvider.defaultModels.some((model) => model.id === currentSelectedModel)
+                    ? currentSelectedModel
+                    : nextProvider.defaultModels[0].id
+            );
+        }
+    }, [selectedId]);
+
+    useEffect(() => {
+        if (!open) return;
+        const nextProvider = PROVIDERS.find((provider) => provider.id === selectedId);
+        if (!nextProvider) return;
+
+        const liveKeys = [apiKey, ...extraKeys].map((key) => key.trim()).filter(Boolean);
+        const canAutoFetch = !nextProvider.requiresApiKey || liveKeys.length > 0;
+
+        if (!canAutoFetch) {
+            onProviderModelFetchStateChange(selectedId, {
+                loading: false,
+                error: null,
+                requestId: null,
+                lastFetchedAt: fetchState.lastFetchedAt,
+            });
+            return;
         }
 
-        const persistedDraft = buildProviderDraft(selectedId, savedProviderConfigs[selectedId]);
-        const persistedKeys = [persistedDraft.apiKey, ...persistedDraft.extraKeys].filter((key) => key.trim().length > 0);
-        const canAutoFetch = !nextProvider?.requiresApiKey || persistedKeys.length > 0;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        if (canAutoFetch) {
-            const requestId = `provider-models-${selectedId}-${Date.now()}-${modelsRequestSeq.current++}`;
-            onProviderModelFetchStateChange(selectedId, {
-                loading: true,
-                error: null,
-                requestId,
-                lastFetchedAt: Date.now(),
-            });
-            timer = setTimeout(() => {
-                vscode.postMessage({
-                    type: 'fetchProviderModels',
-                    requestId,
-                    providerId: selectedId,
-                    apiKey: persistedKeys[0] || undefined,
-                    apiKeys: persistedKeys.length > 1 ? persistedKeys : undefined,
-                    baseUrl: persistedDraft.baseUrl || (selectedId === currentProviderId ? currentBaseUrl : nextProvider?.defaultBaseUrl),
-                });
-            }, 150);
-        }
-        return () => {
-            if (timer) clearTimeout(timer);
-        };
-    }, [currentBaseUrl, currentProviderId, onProviderModelFetchStateChange, savedProviderConfigs, selectedId]);
+        const timer = window.setTimeout(() => {
+            requestModels(selectedId, apiKey, extraKeys, baseUrl || nextProvider.defaultBaseUrl);
+        }, 350);
+
+        return () => window.clearTimeout(timer);
+    }, [
+        apiKey,
+        baseUrl,
+        extraKeys,
+        fetchState.lastFetchedAt,
+        onProviderModelFetchStateChange,
+        open,
+        requestModels,
+        selectedId,
+    ]);
+
+    useEffect(() => {
+        if (!open || selectedId !== 'ollama') return;
+        const intervalId = window.setInterval(() => {
+            if (!fetchState.loading) {
+                requestModels('ollama', apiKey, extraKeys, baseUrl || def.defaultBaseUrl);
+            }
+        }, 5000);
+        return () => window.clearInterval(intervalId);
+    }, [apiKey, baseUrl, def.defaultBaseUrl, extraKeys, fetchState.loading, open, requestModels, selectedId]);
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {
@@ -282,6 +299,8 @@ export const ProviderSettings = memo(({
             vscode.postMessage({ type: 'changeModel', model: selectedModel });
             onModelSelect(selectedModel);
         }
+
+        requestModels(selectedId, apiKey, extraKeys, baseUrl || def.defaultBaseUrl);
     }, [
         apiKey,
         baseUrl,
@@ -290,6 +309,7 @@ export const ProviderSettings = memo(({
         extraKeys,
         onProviderModelFetchStateChange,
         onModelSelect,
+        requestModels,
         selectedId,
         selectedModel,
     ]);

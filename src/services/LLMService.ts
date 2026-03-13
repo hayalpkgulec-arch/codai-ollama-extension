@@ -98,8 +98,8 @@ export class LLMService {
             return provider.defaultModels.map((model) => ({ id: model.id, label: model.label }));
         }
 
+        const url = `${this.getBaseUrl()}${provider.modelsEndpoint}`;
         try {
-            const url = `${this.getBaseUrl()}${provider.modelsEndpoint}`;
             const headers: Record<string, string> = { 'Content-Type': 'application/json' };
             const fetchKey = this.getActiveKey();
             if (fetchKey) headers['Authorization'] = `Bearer ${fetchKey}`;
@@ -123,6 +123,9 @@ export class LLMService {
             const json: any = await response.json();
             if (this.config.providerId === 'ollama') {
                 const models = json.models ?? [];
+                if (!Array.isArray(models)) {
+                    throw new Error(`Ollama: invalid model payload from ${url}`);
+                }
                 return models.map((model: any) => ({ id: model.name, label: model.name }));
             }
 
@@ -140,7 +143,13 @@ export class LLMService {
             if (error?.message?.includes('API key') || error?.message?.includes('401') || error?.message?.includes('403')) {
                 throw error;
             }
-            return provider.defaultModels.map((model) => ({ id: model.id, label: model.label }));
+            if (error?.name === 'AbortError') {
+                throw new Error(`${provider.label}: models request timed out at ${url}.`);
+            }
+            if (this.config.providerId === 'ollama') {
+                throw new Error(`Ollama: unable to reach ${url}. Start Ollama or update the base URL.`);
+            }
+            throw new Error(`${provider.label}: unable to fetch models from ${url}. ${error?.message || 'Unknown error'}`);
         }
     }
 

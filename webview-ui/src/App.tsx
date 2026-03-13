@@ -125,8 +125,17 @@ function AppShell() {
 
   // BUG 14 FIX: Ollama'dan dinamik model listesi — uygulama açılışında çek
   useEffect(() => {
-    vscode.postMessage({ type: 'fetchOllamaModels' });
-  }, []);
+    const sendFetch = () => vscode.postMessage({
+      type: 'fetchOllamaModels',
+      requestId: `ollama-models-${Date.now()}`,
+    });
+
+    sendFetch();
+    if (currentProviderId !== 'ollama') return;
+
+    const intervalId = window.setInterval(sendFetch, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [currentProviderId]);
 
   const scrollToBottom = useCallback(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -483,6 +492,7 @@ function AppShell() {
       {/* ── Provider Settings overlay — always mounted, hidden when closed ── */}
       <div className={`settings-overlay${showSettings ? '' : ' settings-overlay--hidden'}`}>
         <ProviderSettings
+          open={showSettings}
           currentProviderId={providerInfo.providerId as any}
           hasApiKey={providerInfo.hasApiKey}
           currentBaseUrl={providerInfo.baseUrl}

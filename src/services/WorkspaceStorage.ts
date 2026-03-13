@@ -9,6 +9,7 @@ export class WorkspaceStorage {
     private readonly workspaceRoot: string;
     private readonly workspaceHash: string;
     private readonly workspaceDir: string;
+    private readonly writeQueue = new Map<string, Promise<void>>();
 
     constructor(private readonly context: vscode.ExtensionContext) {
         const workspaceFsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || 'no-workspace';
@@ -139,9 +140,35 @@ export class WorkspaceStorage {
     }
 
     private async writeJson(filePath: string, value: unknown): Promise<void> {
-        await fsp.mkdir(path.dirname(filePath), { recursive: true });
-        const tempFile = `${filePath}.tmp`;
-        await fsp.writeFile(tempFile, JSON.stringify(value, null, 2), 'utf8');
-        await fsp.rename(tempFile, filePath);
+        const previousWrite = this.writeQueue.get(filePath) ?? Promise.resolve();
+        const nextWrite = previousWrite
+            .catch(() => undefined)
+            .then(async () => {
+                await fsp.mkdir(path.dirname(filePath), { recursive: true });
+                const tempFile = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                const payload = JSON.stringify(value, null, 2);
+
+                try {
+                    await fsp.writeFile(tempFile, payload, 'utf8');
+                    await fsp.rename(tempFile, filePath);
+                } catch (error: any) {
+                    if (error?.code === 'ENOENT' || error?.code === 'EPERM' || error?.code === 'EEXIST') {
+                        await fsp.writeFile(filePath, payload, 'utf8');
+                    } else {
+                        throw error;
+                    }
+                } finally {
+                    await fsp.rm(tempFile, { force: true }).catch(() => undefined);
+                }
+            });
+
+        this.writeQueue.set(filePath, nextWrite);
+        try {
+            await nextWrite;
+        } finally {
+            if (this.writeQueue.get(filePath) === nextWrite) {
+                this.writeQueue.delete(filePath);
+            }
+        }
     }
 }
