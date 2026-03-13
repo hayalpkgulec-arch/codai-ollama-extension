@@ -1,5 +1,7 @@
 # Requirements
 
+> Superseded on 2026-03-13 by `.codai/plans/vscode-fork-20260313/`. These requirements now describe the prototype shell only.
+
 ## Goals
 
 - WHEN CodAI shifts to an IDE-first roadmap THE SYSTEM SHALL keep the extension stable while moving new product investment into a shared core plus desktop workbench.

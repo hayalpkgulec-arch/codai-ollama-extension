@@ -64,8 +64,17 @@ See [CHANGELOG.md](CHANGELOG.md) for full history.
 
 ## Development Backlog
 
-Current milestone backlog lives in:
+Current roadmap is split between the agent/runtime backlog and the new VS Code OSS fork track:
 
-- [requirements.md](.codai/plans/agentic-coding-backlog-20260313/requirements.md)
-- [design.md](.codai/plans/agentic-coding-backlog-20260313/design.md)
-- [tasks.md](.codai/plans/agentic-coding-backlog-20260313/tasks.md)
+- [agentic requirements](.codai/plans/agentic-coding-backlog-20260313/requirements.md)
+- [agentic design](.codai/plans/agentic-coding-backlog-20260313/design.md)
+- [agentic tasks](.codai/plans/agentic-coding-backlog-20260313/tasks.md)
+- [fork requirements](.codai/plans/vscode-fork-20260313/requirements.md)
+- [fork design](.codai/plans/vscode-fork-20260313/design.md)
+- [fork tasks](.codai/plans/vscode-fork-20260313/tasks.md)
+
+To bootstrap the upstream VS Code OSS base for the desktop fork:
+
+```powershell
+npm run ide:fork:bootstrap
+```

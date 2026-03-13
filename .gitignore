@@ -5,3 +5,5 @@ out/
 *.vsix
 .vscode-test/
 nul
+.upstream/
+.forks/

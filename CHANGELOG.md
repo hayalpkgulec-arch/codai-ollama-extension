@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.0.59] - 2026-03-13
+### Added
+- Added a VS Code OSS fork bootstrap script at `scripts/bootstrap-vscode-fork.ps1` plus `npm run ide:fork:bootstrap` so the new desktop direction can start from a real upstream base
+- Added a dedicated fork roadmap under `.codai/plans/vscode-fork-20260313/`
+
+### Changed
+- Marked the previous custom Electron + Monaco desktop plan as superseded after it failed the expected Cursor-like product bar
+- Bootstrapped a local upstream VS Code OSS checkout under `.upstream/vscode` for the next implementation slices
+
+---
+
 ## [0.0.50] - 2026-03-13
 ### Added
 - `web_fetch` now returns citation-ready provenance, canonical URL data, robots/noindex directives, trust warnings, redirect chains, and cache/throttling metadata so the agent can reason about source quality instead of just raw text

@@ -1,5 +1,7 @@
 # Tasks
 
+> Superseded on 2026-03-13 by `.codai/plans/vscode-fork-20260313/`. The custom `apps/desktop` shell remains a prototype/reference surface, not the long-term product foundation.
+
 ## Phase 1 Shared Core Readiness
 
 - [x] Add `packages/core` with host/runtime contract exports

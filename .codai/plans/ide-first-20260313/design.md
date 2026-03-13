@@ -1,5 +1,7 @@
 # Design
 
+> Superseded on 2026-03-13 by `.codai/plans/vscode-fork-20260313/` after the custom Electron + Monaco shell was rejected as the product direction.
+
 ## Direction
 
 CodAI now treats the VS Code extension as the compatibility shell and the standalone desktop IDE as the product surface. The immediate goal is not to replace the extension overnight, but to stop deepening extension-specific coupling while giving the future IDE a real codebase to grow from.

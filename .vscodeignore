@@ -35,6 +35,10 @@ webview-ui/.gitignore
 node_modules/**
 apps/**
 packages/**
+.upstream/**
+.forks/**
+.codai/**
+scripts/**
 
 # Misc
 replace.js
