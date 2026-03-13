@@ -6325,18 +6325,18 @@ button:focus-visible {
 
 /* Cursor/Dvina fork pass: unify the CodAI webview with a neutral dark system */
 :root {
-  --codai-ui-bg: #0a0d12;
-  --codai-ui-surface: #0f1319;
-  --codai-ui-surface-2: #121821;
-  --codai-ui-surface-3: #161d27;
-  --codai-ui-surface-4: #1a2230;
-  --codai-ui-border: #1d2633;
-  --codai-ui-border-strong: #273244;
-  --codai-ui-text: #e7edf7;
-  --codai-ui-text-muted: #93a0b5;
-  --codai-ui-text-dim: #6f7b8f;
-  --codai-ui-accent: #78a6ff;
-  --codai-ui-accent-soft: rgba(120, 166, 255, 0.14);
+  --codai-ui-bg: #090b0f;
+  --codai-ui-surface: #0d1015;
+  --codai-ui-surface-2: #11151b;
+  --codai-ui-surface-3: #151a21;
+  --codai-ui-surface-4: #1a2028;
+  --codai-ui-border: #1b2129;
+  --codai-ui-border-strong: #2b333d;
+  --codai-ui-text: #e7e8eb;
+  --codai-ui-text-muted: #9aa1ab;
+  --codai-ui-text-dim: #747b86;
+  --codai-ui-accent: #8d95a1;
+  --codai-ui-accent-soft: rgba(141, 149, 161, 0.12);
   --codai-ui-success: #77d19b;
   --codai-ui-success-soft: rgba(119, 209, 155, 0.14);
   --codai-ui-warning: #d7ad65;
@@ -6357,6 +6357,16 @@ button:focus-visible {
   --vscode-inputOption-activeBackground: var(--codai-ui-accent-soft);
   --vscode-inputOption-activeBorder: var(--codai-ui-border-strong);
   --vscode-inputOption-activeForeground: var(--codai-ui-text);
+  --vscode-button-background: #1b2129;
+  --vscode-button-hoverBackground: #232a34;
+  --vscode-button-foreground: var(--codai-ui-text);
+  --vscode-textLink-foreground: #c9ced6;
+  --vscode-textLink-activeForeground: #e2e5ea;
+  --vscode-input-foreground: var(--codai-ui-text);
+  --vscode-list-activeSelectionBackground: #151920;
+  --vscode-list-hoverBackground: #13171d;
+  --vscode-list-activeSelectionForeground: var(--codai-ui-text);
+  --vscode-list-inactiveSelectionBackground: #12161c;
   background: var(--codai-ui-bg);
   color: var(--codai-ui-text);
 }
@@ -6486,8 +6496,8 @@ button:focus-visible {
 }
 
 .pill.running {
-  border-color: rgba(120, 166, 255, 0.22);
-  background: linear-gradient(180deg, rgba(120, 166, 255, 0.05) 0%, rgba(120, 166, 255, 0.02) 100%), var(--codai-ui-surface);
+  border-color: rgba(141, 149, 161, 0.22);
+  background: linear-gradient(180deg, rgba(141, 149, 161, 0.05) 0%, rgba(141, 149, 161, 0.02) 100%), var(--codai-ui-surface);
 }
 
 .pill.done {
@@ -6515,8 +6525,8 @@ button:focus-visible {
 }
 
 .card.running {
-  border-color: rgba(120, 166, 255, 0.22);
-  background: linear-gradient(180deg, rgba(120, 166, 255, 0.05) 0%, rgba(120, 166, 255, 0.015) 100%), var(--codai-ui-surface);
+  border-color: rgba(141, 149, 161, 0.22);
+  background: linear-gradient(180deg, rgba(141, 149, 161, 0.05) 0%, rgba(141, 149, 161, 0.015) 100%), var(--codai-ui-surface);
   box-shadow: none;
 }
 
@@ -6641,7 +6651,7 @@ button:focus-visible {
 
 .input-plus-btn.has-context {
   color: var(--codai-ui-text);
-  border-color: rgba(120, 166, 255, 0.2);
+  border-color: rgba(141, 149, 161, 0.2);
   background: var(--codai-ui-accent-soft);
 }
 
@@ -6665,8 +6675,8 @@ button:focus-visible {
 }
 
 .context-compact-banner {
-  border: 1px solid rgba(120, 166, 255, 0.16);
-  background: linear-gradient(180deg, rgba(120, 166, 255, 0.06) 0%, rgba(120, 166, 255, 0.02) 100%), var(--codai-ui-surface);
+  border: 1px solid rgba(141, 149, 161, 0.16);
+  background: linear-gradient(180deg, rgba(141, 149, 161, 0.06) 0%, rgba(141, 149, 161, 0.02) 100%), var(--codai-ui-surface);
   color: var(--codai-ui-text-muted);
 }
 
@@ -6705,4 +6715,111 @@ button:focus-visible {
   border-color: rgba(239, 141, 125, 0.22);
   background: var(--codai-ui-danger-soft);
   color: #f0b0a4;
+}
+
+/* No-blue pass: neutralize remaining active, focus, provider, and link accents */
+.status-running,
+.ps-provider-btn.active .ps-provider-icon,
+.ps-provider-check,
+.ps-label-link,
+.ps-fetch-btn,
+.context-pill-name,
+.ps-model-status-badge.loading,
+.ps-model-status-badge.ready {
+  color: #c9ced6 !important;
+}
+
+.ps-provider-btn.active,
+.ps-save-btn,
+.ps-fetch-btn,
+.context-pill,
+.context-btn-wrap button,
+.checkpoint-revert-btn,
+.mode-option.active,
+.model-picker-option.active,
+.slash-command-item.active {
+  background: var(--codai-ui-surface-3) !important;
+  border-color: var(--codai-ui-border-strong) !important;
+  color: var(--codai-ui-text) !important;
+}
+
+.ps-provider-btn:hover,
+.ps-save-btn:hover:not(:disabled),
+.ps-fetch-btn:hover:not(:disabled),
+.context-pill:hover,
+.context-btn-wrap button:hover,
+.mode-option:hover,
+.model-picker-option:hover,
+.slash-command-item:hover {
+  background: var(--codai-ui-surface-4) !important;
+  border-color: var(--codai-ui-border-strong) !important;
+  color: var(--codai-ui-text) !important;
+}
+
+.ps-input,
+.ps-model-search,
+.context-menu,
+.context-popup,
+.model-picker-dropdown,
+.mode-dropdown {
+  background: var(--codai-ui-surface-2) !important;
+  border-color: var(--codai-ui-border) !important;
+  color: var(--codai-ui-text) !important;
+}
+
+.ps-input:focus,
+.ps-model-search:focus {
+  border-color: var(--codai-ui-border-strong) !important;
+  box-shadow: 0 0 0 1px rgba(141, 149, 161, 0.12) !important;
+  background: var(--codai-ui-surface-3) !important;
+}
+
+.ps-save-btn {
+  background: var(--codai-ui-surface-3) !important;
+  color: var(--codai-ui-text) !important;
+}
+
+.ps-save-btn.saved {
+  border-color: rgba(119, 209, 155, 0.28) !important;
+  background: rgba(119, 209, 155, 0.1) !important;
+  color: #dce5de !important;
+}
+
+.ps-save-btn.needs-key {
+  border-color: rgba(239, 141, 125, 0.26) !important;
+  background: rgba(239, 141, 125, 0.08) !important;
+  color: #f0b0a4 !important;
+}
+
+.ps-provider-badge,
+.web-fetch-card__citation-link,
+.app a {
+  color: #c9ced6 !important;
+}
+
+.app a {
+  text-decoration-color: rgba(201, 206, 214, 0.2);
+}
+
+.app a:hover,
+.web-fetch-card__citation-link:hover:not(:disabled) {
+  color: #e2e5ea !important;
+}
+
+.web-fetch-card__citation-link,
+.ps-label-link {
+  border-bottom-color: rgba(201, 206, 214, 0.16) !important;
+}
+
+.web-fetch-card__flag,
+.web-search-card__result-rank {
+  background: var(--codai-ui-surface-3) !important;
+  border-color: var(--codai-ui-border) !important;
+  color: var(--codai-ui-text-muted) !important;
+}
+
+.status-running,
+.card-header .status-running,
+.pill.running .pill-icon {
+  color: #b6bdc8 !important;
 }

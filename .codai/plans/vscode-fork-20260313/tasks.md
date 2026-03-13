@@ -31,6 +31,7 @@
 - [x] Move CodAI into the native right auxiliary pane instead of the activity bar
 - [x] Add the first Cursor/Dvina-style solid dark workbench pass across titlebar, rails, sidebars, panels, and tabs
 - [x] Add the first unified right-pane dark pass so the CodAI webview and the fork shell share one palette
+- [x] Remove the remaining blue accent leakage from the integrated fork and CodAI pane
 - [ ] Add CodAI thread/task history surface inside the fork
 - [ ] Add a native-feeling chat/composer surface
 - [ ] Add Review / Changes / Trace panels wired to shared runtime data
@@ -58,3 +59,4 @@
 - 2026-03-13: Added the first native workbench patch map. The roadmap now points directly at `activitybar`, `sidebar`, `panel`, `auxiliarybar`, `chat`, `scm`, and `comments` as the concrete fork surfaces for the first CodAI GUI-first milestone.
 - 2026-03-13: Delivered the first native right-lane CodAI slice. The extension now contributes its main view to the secondary sidebar, the fork opens it as the active auxiliary-bar AI surface on launch, and the shell styling pass now targets a darker, softer Cursor/Dvina baseline.
 - 2026-03-13: Added the first palette-unification pass across the fork shell and the CodAI webview. The right AI lane now uses solid charcoal surfaces and softer neutral borders instead of mixing neutral dark with blue-tinted panels.
+- 2026-03-13: Removed the remaining blue accent leakage from the right pane and shell chrome. Active, focused, selected, save/apply, and context states now resolve to neutral slate/graphite values instead of bright blue.

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.62] - 2026-03-13
+### Changed
+- Removed the remaining blue-tinted UI accents from the CodAI right pane and retuned active, focus, selection, provider, and composer states toward a neutral charcoal/slate palette
+- Retuned the VS Code OSS fork shell variables and pane colors so the overall IDE chrome sits on a darker, more consistent grayscale baseline
+
+---
+
 ## [0.0.61] - 2026-03-13
 ### Added
 - Added a second fork design pass that pushes the VS Code OSS shell and the CodAI right-pane webview toward a more consistent Cursor/Dvina-style neutral dark system

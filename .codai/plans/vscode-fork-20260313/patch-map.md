@@ -16,6 +16,11 @@
   - `src/vs/workbench/browser/parts/statusbar/media/statusbarpart.css`: aligns the lower shell with the darker neutral baseline
   - `src/vs/workbench/browser/parts/sidebar/media/sidebarpart.css`: removes the more saturated blue row selection in favor of softer neutral active states
   - `src/vs/workbench/browser/parts/auxiliarybar/media/auxiliaryBarPart.css`: keeps the right lane visually aligned with the rest of the fork shell
+- 2026-03-13: Blue-accent removal pass shipped.
+  - `webview-ui/src/App.css`: neutralizes active, focus, provider selection, save/apply, context, link, and running states so the CodAI pane no longer reads as blue-themed
+  - `src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css`: overrides workbench-level theme variables to a slate/graphite baseline
+  - `src/vs/workbench/browser/parts/activitybar/media/activitybarpart.css`: removes the cooler active rail tint
+  - `src/vs/workbench/browser/parts/editor/media/editortabscontrol.css`: shifts active tab chrome away from blue-leaning neutrals
 
 ## Product Goal
 
