@@ -41,6 +41,17 @@
 - [ ] Add grouped checkpoint rollback and "restore all files from turn"
 - [ ] Audit updater and release delivery reliability end-to-end
 
+## v0.0.56 IDE-First Bootstrap
+
+- [x] Add explicit shell execution envelopes for Windows command parity
+- [x] Include shell metadata in `run_command` results for traceability
+- [x] Stop provider settings auto-fetch from looping on its own timestamp state
+- [x] Gate background Ollama polling so it stops after models load
+- [x] Add `packages/core` host/runtime contract scaffold
+- [x] Add `apps/desktop` Electron + Monaco workbench scaffold
+- [ ] Move live runtime services behind the shared core package
+- [ ] Replace the desktop mock timeline with the real shared runtime
+
 ## Cross-Cutting Guardrails
 
 - [ ] Keep all new persistence schema changes backward-compatible
@@ -57,3 +68,4 @@
 - 2026-03-13: Completed `v0.0.53` by wiring a real `GoalControlService` into the runtime loop, persisting goal snapshots with sessions, emitting recovery/drift warnings into the trace UI, adding approval previews plus retry policies for risky tools, and supporting workspace-bound read-only external tool aliases through `.codai/external-tools.json`.
 - 2026-03-13: Started the `v0.0.54` hardening slice by fixing concurrent workspace-state writes in `WorkspaceStorage`, making provider model fetching debounce live drafts instead of only saved settings, and polling Ollama model availability so the local provider reflects startup changes without manual refresh loops.
 - 2026-03-13: Completed the session-management hardening slice under `v0.0.54` by adding import/export bundles, pin/archive metadata, archived-aware search/grouping, and regression coverage for session ordering plus round-trip transfer behavior.
+- 2026-03-13: Started the IDE-first bootstrap slice by normalizing Windows shell execution into explicit envelopes, surfacing that metadata through `run_command`, stopping provider auto-fetch loops from re-triggering on internal timestamps, and scaffolding both `packages/core` and `apps/desktop` so the standalone IDE track has a real codebase to build on.

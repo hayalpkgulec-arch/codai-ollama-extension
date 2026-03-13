@@ -97,6 +97,13 @@ IMPORTANT RULES:
             pid:          result.pid,
             timedOut:     result.timedOut,
             truncated:    result.truncated,
+            requestedCommand: result.shell.requestedCommand,
+            adaptedCommand:   result.shell.adaptedCommand,
+            shellKind:        result.shell.shellKind,
+            shellPath:        result.shell.shell,
+            shellArgs:        result.shell.shellArgs,
+            mirrorMode:       result.shell.mirrorMode,
+            executionPath:    result.shell.executionPath,
         });
     }
 }

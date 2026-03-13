@@ -21,6 +21,12 @@ import {
     type ProviderCapability,
     type ProviderId,
 } from '../../catalog/providerCatalog';
+import {
+    buildModelFetchSignature,
+    createProviderModelsRequestId,
+    normalizeProviderKeys,
+    shouldPollOllamaModels,
+} from '../../catalog/modelCatalogController';
 
 interface ProviderDraft {
     apiKey: string;
@@ -117,7 +123,7 @@ export const ProviderSettings = memo(({
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
     const [selectedModel, setSelectedModel] = useState(currentModel);
-    const modelsRequestSeq = useRef(0);
+    const autoFetchSignatureRef = useRef('');
 
     const def = PROVIDERS.find((provider) => provider.id === selectedId)!;
     const currentDraft = providerDrafts[selectedId] ?? buildProviderDraft(selectedId, savedProviderConfigs[selectedId]);
@@ -162,7 +168,7 @@ export const ProviderSettings = memo(({
     }, [currentModel]);
 
     const requestModels = useCallback((providerId: ProviderId, keyOverride?: string, extraKeyOverrides?: string[], baseUrlOverride?: string) => {
-        const requestId = `provider-models-${providerId}-${Date.now()}-${modelsRequestSeq.current++}`;
+        const requestId = createProviderModelsRequestId(providerId);
         onProviderModelFetchStateChange(providerId, {
             loading: true,
             error: null,
@@ -170,10 +176,10 @@ export const ProviderSettings = memo(({
             lastFetchedAt: Date.now(),
         });
 
-        const allKeys = [
-            typeof keyOverride === 'string' ? keyOverride.trim() : apiKey.trim(),
-            ...((extraKeyOverrides ?? extraKeys).map((key) => key.trim()))
-        ].filter(Boolean);
+        const allKeys = normalizeProviderKeys(
+            typeof keyOverride === 'string' ? keyOverride : apiKey,
+            extraKeyOverrides ?? extraKeys,
+        );
 
         vscode.postMessage({
             type: 'fetchProviderModels',
@@ -203,8 +209,15 @@ export const ProviderSettings = memo(({
 
         const liveKeys = [apiKey, ...extraKeys].map((key) => key.trim()).filter(Boolean);
         const canAutoFetch = !nextProvider.requiresApiKey || liveKeys.length > 0;
+        const resolvedBaseUrl = (baseUrl || nextProvider.defaultBaseUrl).trim();
+        const autoFetchSignature = buildModelFetchSignature(selectedId, {
+            apiKey,
+            extraKeys,
+            baseUrl: resolvedBaseUrl,
+        });
 
         if (!canAutoFetch) {
+            autoFetchSignatureRef.current = '';
             onProviderModelFetchStateChange(selectedId, {
                 loading: false,
                 error: null,
@@ -214,8 +227,13 @@ export const ProviderSettings = memo(({
             return;
         }
 
+        if (autoFetchSignatureRef.current === autoFetchSignature) {
+            return;
+        }
+
         const timer = window.setTimeout(() => {
-            requestModels(selectedId, apiKey, extraKeys, baseUrl || nextProvider.defaultBaseUrl);
+            autoFetchSignatureRef.current = autoFetchSignature;
+            requestModels(selectedId, apiKey, extraKeys, resolvedBaseUrl);
         }, 350);
 
         return () => window.clearTimeout(timer);
@@ -223,7 +241,6 @@ export const ProviderSettings = memo(({
         apiKey,
         baseUrl,
         extraKeys,
-        fetchState.lastFetchedAt,
         onProviderModelFetchStateChange,
         open,
         requestModels,
@@ -232,13 +249,24 @@ export const ProviderSettings = memo(({
 
     useEffect(() => {
         if (!open || selectedId !== 'ollama') return;
+        if (!shouldPollOllamaModels(fetchState, models.length)) return;
         const intervalId = window.setInterval(() => {
-            if (!fetchState.loading) {
+            if (shouldPollOllamaModels(fetchState, models.length)) {
                 requestModels('ollama', apiKey, extraKeys, baseUrl || def.defaultBaseUrl);
             }
         }, 5000);
         return () => window.clearInterval(intervalId);
-    }, [apiKey, baseUrl, def.defaultBaseUrl, extraKeys, fetchState.loading, open, requestModels, selectedId]);
+    }, [
+        apiKey,
+        baseUrl,
+        def.defaultBaseUrl,
+        extraKeys,
+        fetchState.loading,
+        models.length,
+        open,
+        requestModels,
+        selectedId,
+    ]);
 
     useEffect(() => {
         const handler = (event: MessageEvent) => {

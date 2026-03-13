@@ -15,6 +15,14 @@
 import * as vscode from 'vscode';
 import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
+import {
+    adaptCommandForShell,
+    createShellExecutionEnvelope,
+    prependWorkspaceCwd,
+    resolveShellConfig,
+    type ShellConfig,
+    type ShellExecutionEnvelope,
+} from '../../services/ShellExecutionService';
 
 // ─── Sabitler (Cline'ın constants.ts'inden) ─────────────────────────────────
 const PROCESS_HOT_TIMEOUT_NORMAL    = 2_000;   // 2s — normal komut çıktı sonrası
@@ -197,11 +205,14 @@ function killProcessTree(pid: number): void {
 let _codaiTerminal: vscode.Terminal | undefined;
 
 export function getCodaiTerminal(cwd?: string): vscode.Terminal {
+    const shellConfig = resolveShellConfig();
     if (!_codaiTerminal || _codaiTerminal.exitStatus !== undefined) {
         _codaiTerminal = vscode.window.createTerminal({
             name: 'CodAI',
             iconPath: new vscode.ThemeIcon('sparkle'),
             cwd,
+            shellPath: shellConfig.shell,
+            shellArgs: shellConfig.args,
         });
     }
     return _codaiTerminal;
@@ -267,6 +278,7 @@ export interface RunResult {
     pid?: number;
     truncated: boolean;
     timedOut: boolean;
+    shell: ShellExecutionEnvelope;
 }
 
 /**
@@ -289,20 +301,22 @@ export async function runCommand(
     const timeoutMs      = isBackground ? 3_000 : Math.min(options.timeout ?? 60_000, 300_000);
     const bgId           = `bg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const startedAt      = Date.now();
+    const shellConfig    = resolveShellConfig();
+    const spawnEnvelope  = createShellExecutionEnvelope(command, workspaceRoot, shellConfig, 'spawn');
 
     // ── Preferred path: VSCode shell integration for foreground commands ─────
     // This avoids the "preview terminal != real process" mismatch when available.
     if (!isBackground) {
-        const shellResult = await tryRunViaShellIntegration(command, workspaceRoot, timeoutMs, startedAt);
+        const shellResult = await tryRunViaShellIntegration(command, workspaceRoot, timeoutMs, startedAt, shellConfig);
         if (shellResult) return shellResult;
     }
 
     // ── Mirror to VSCode terminal ────────────────────────────────────────────
-    mirrorToTerminal(command);
+    mirrorToTerminal(command, shellConfig);
 
     // ── Shell config ─────────────────────────────────────────────────────────
-    const { shell, args: shellArgs, isPowerShell } = getShellConfig();
-    const adapted = adaptForShell(command, isPowerShell);
+    const { shell, args: shellArgs } = shellConfig;
+    const adapted = adaptCommandForShell(command, shellConfig);
 
     // B04 FIX: Validate cwd exists before spawning
     // If command starts with "cd X && ..." and X doesn't exist, spawn will silently
@@ -325,6 +339,7 @@ export async function runCommand(
                 autoDetected: false,
                 truncated: false,
                 timedOut: false,
+                shell: spawnEnvelope,
             };
         }
     }
@@ -426,6 +441,7 @@ export async function runCommand(
                         pid: child.pid,
                         truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                         timedOut: false,
+                        shell: spawnEnvelope,
                     });
                 }, immediate ? 200 : BG_SETTLED_TIMEOUT_MS);
             };
@@ -485,6 +501,7 @@ export async function runCommand(
                     pid: child.pid,
                     truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                     timedOut: false,
+                    shell: spawnEnvelope,
                 });
             }, BG_MAX_WAIT_MS);
 
@@ -513,6 +530,7 @@ export async function runCommand(
                     pid: child.pid,
                     truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                     timedOut: false,
+                    shell: spawnEnvelope,
                 });
             });
         } else {
@@ -535,6 +553,7 @@ export async function runCommand(
                     autoDetected: false,
                     truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                     timedOut: true,
+                    shell: spawnEnvelope,
                 });
             }, timeoutMs);
 
@@ -558,6 +577,7 @@ export async function runCommand(
                     autoDetected: false,
                     truncated: false,
                     timedOut: false,
+                    shell: spawnEnvelope,
                 });
             };
 
@@ -578,6 +598,7 @@ export async function runCommand(
                     autoDetected: false,
                     truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                     timedOut: false,
+                    shell: spawnEnvelope,
                 });
             });
 
@@ -596,6 +617,7 @@ export async function runCommand(
                     autoDetected: false,
                     truncated: false,
                     timedOut: false,
+                    shell: spawnEnvelope,
                 });
             });
         }
@@ -607,6 +629,7 @@ async function tryRunViaShellIntegration(
     workspaceRoot: string,
     timeoutMs: number,
     startedAt: number,
+    shellConfig: ShellConfig,
 ): Promise<RunResult | null> {
     try {
         const term = getCodaiTerminal(workspaceRoot) as any;
@@ -615,10 +638,10 @@ async function tryRunViaShellIntegration(
         const integration = term.shellIntegration;
         if (!integration || typeof integration.executeCommand !== 'function') return null;
 
-        const { isPowerShell } = getShellConfig();
-        const fullCommand = prependWorkspaceCwd(command, workspaceRoot, isPowerShell);
+        const fullCommand = prependWorkspaceCwd(command, workspaceRoot, shellConfig);
         const execution = integration.executeCommand(fullCommand);
         if (!execution || typeof execution.read !== 'function') return null;
+        const integrationEnvelope = createShellExecutionEnvelope(command, workspaceRoot, shellConfig, 'shell_integration');
 
         let stdoutRaw = '';
         let stderrRaw = '';
@@ -661,6 +684,7 @@ async function tryRunViaShellIntegration(
                 autoDetected: false,
                 truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                 timedOut: true,
+                shell: integrationEnvelope,
             };
         }
 
@@ -676,6 +700,7 @@ async function tryRunViaShellIntegration(
                 autoDetected: false,
                 truncated: lines.stdout.length > MAX_OUTPUT_LINES,
                 timedOut: false,
+                shell: integrationEnvelope,
             };
         }
 
@@ -690,19 +715,11 @@ async function tryRunViaShellIntegration(
             autoDetected: false,
             truncated: lines.stdout.length > MAX_OUTPUT_LINES,
             timedOut: false,
+            shell: integrationEnvelope,
         };
     } catch {
         return null;
     }
-}
-
-function prependWorkspaceCwd(command: string, workspaceRoot: string, isPowerShell: boolean): string {
-    if (!workspaceRoot) return adaptForShell(command, isPowerShell);
-    if (isPowerShell) {
-        const escaped = workspaceRoot.replace(/'/g, "''");
-        return `Set-Location -LiteralPath '${escaped}'; ${adaptForShell(command, true)}`;
-    }
-    return `cd /d "${workspaceRoot}" && ${command}`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -712,58 +729,11 @@ function buildLines(stdoutRaw: string, stderrRaw: string): { stdout: string[]; s
     return { stdout, stderrStr: stderr };
 }
 
-function mirrorToTerminal(command: string): void {
+function mirrorToTerminal(command: string, shellConfig: ShellConfig): void {
     try {
         const term = getCodaiTerminal();
         term.show(true);
-        const { isPowerShell } = getShellConfig();
-        // B05 FIX: Mirror must match what child_process executes.
-        // adaptForShell converts && → ; for PowerShell — mirror the same adapted command.
-        const mirrored = adaptForShell(command, isPowerShell);
+        const mirrored = adaptCommandForShell(command, shellConfig);
         term.sendText(mirrored, true);
     } catch { /* non-critical */ }
-}
-
-function splitCompound(cmd: string): string[] {
-    const parts: string[] = [];
-    let cur = '', inSQ = false, inDQ = false, depth = 0;
-    for (let i = 0; i < cmd.length; i++) {
-        const c = cmd[i], n = cmd[i + 1];
-        if (c === "'" && !inDQ) { inSQ = !inSQ; cur += c; continue; }
-        if (c === '"' && !inSQ) { inDQ = !inDQ; cur += c; continue; }
-        if (inSQ || inDQ) { cur += c; continue; }
-        if (c === '(') { depth++; cur += c; continue; }
-        if (c === ')') { depth--; cur += c; continue; }
-        if (depth === 0 && c === '&' && n === '&') { if (cur.trim()) parts.push(cur.trim()); cur = ''; i++; continue; }
-        cur += c;
-    }
-    if (cur.trim()) parts.push(cur.trim());
-    return parts.length ? parts : [cmd];
-}
-
-function getShellConfig(): { shell: string; args: string[]; isPowerShell: boolean } {
-    if (process.platform !== 'win32') {
-        return { shell: '/bin/sh', args: ['-c'], isPowerShell: false };
-    }
-    // Windows: PowerShell tespit et
-    try {
-        const cfg = vscode.workspace.getConfiguration('terminal.integrated');
-        const profile = cfg.get<string>('defaultProfile.windows', '');
-        if (/powershell|pwsh/i.test(profile)) {
-            const shell = /pwsh/i.test(profile) ? 'pwsh.exe' : 'powershell.exe';
-            return { shell, args: ['-NoProfile', '-NonInteractive', '-Command'], isPowerShell: true };
-        }
-        const profiles = cfg.get<Record<string, any>>('profiles.windows', {});
-        const pPath = String(profiles[profile]?.path ?? '').toLowerCase();
-        if (pPath.includes('pwsh')) return { shell: 'pwsh.exe', args: ['-NoProfile', '-NonInteractive', '-Command'], isPowerShell: true };
-        if (pPath.includes('powershell')) return { shell: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command'], isPowerShell: true };
-    } catch { /* ignore */ }
-    // Default: cmd.exe (safe, handles &&)
-    return { shell: 'cmd.exe', args: ['/c'], isPowerShell: false };
-}
-
-function adaptForShell(command: string, isPowerShell: boolean): string {
-    if (!isPowerShell) return command;
-    // PowerShell: && → ; (statement separator)
-    return command.replace(/\s*&&\s*/g, '; ');
 }

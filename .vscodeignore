@@ -33,6 +33,8 @@ webview-ui/.gitignore
 
 # Root node_modules
 node_modules/**
+apps/**
+packages/**
 
 # Misc
 replace.js

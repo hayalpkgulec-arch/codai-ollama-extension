@@ -20,6 +20,7 @@ import { CodaiStoresProvider } from './store/CodaiStoresProvider';
 import type { SlashCommand } from './components/chat/SlashCommandMenu';
 import { ProviderSettings } from './components/settings/ProviderSettings';
 import { PROVIDERS, type ProviderId } from './catalog/providerCatalog';
+import { createProviderModelsRequestId, shouldPollOllamaModels } from './catalog/modelCatalogController';
 import { loadAutoApproveConfig } from './components/settings/AutoApproveSettings';
 import type { ModeDef } from './components/chat/ModeSelector';
 import type { AutoApproveConfig, ModelDef, ProviderModelsFetchState } from './types';
@@ -106,6 +107,9 @@ function AppShell() {
   const currentProviderId = providerInfo.providerId as ProviderId;
   const currentProviderDef = PROVIDERS.find((provider) => provider.id === currentProviderId) ?? DEFAULT_PROVIDER_DEF;
   const isProviderLocal = currentProviderDef.isLocal;
+  const currentProviderFetchState = providerModelFetchStateById[currentProviderId] || { loading: false, error: null, requestId: null };
+  const currentProviderModelsCount = (providerModelsById[currentProviderId]?.length ?? 0)
+    || (currentProviderId === 'ollama' ? ollamaModels.length : 0);
 
   // ── History ────────────────────────────────────────────────────────────────
   const {
@@ -127,19 +131,42 @@ function AppShell() {
   const endRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // BUG 14 FIX: Ollama'dan dinamik model listesi — uygulama açılışında çek
+  // Keep Ollama reachability alive in the background, but only while models are missing or stale.
   useEffect(() => {
-    const sendFetch = () => vscode.postMessage({
-      type: 'fetchOllamaModels',
-      requestId: `ollama-models-${Date.now()}`,
-    });
+    if (showSettings) return;
+    if (currentProviderId !== 'ollama') return;
+    if (!shouldPollOllamaModels(currentProviderFetchState, currentProviderModelsCount)) return;
+
+    const sendFetch = () => {
+      const requestId = createProviderModelsRequestId('ollama');
+      setProviderModelFetchState('ollama', {
+        loading: true,
+        error: null,
+        requestId,
+        lastFetchedAt: Date.now(),
+      });
+      vscode.postMessage({
+        type: 'fetchProviderModels',
+        requestId,
+        providerId: 'ollama',
+      });
+    };
 
     sendFetch();
-    if (currentProviderId !== 'ollama') return;
-
-    const intervalId = window.setInterval(sendFetch, 5000);
+    const intervalId = window.setInterval(() => {
+      if (shouldPollOllamaModels(currentProviderFetchState, currentProviderModelsCount)) {
+        sendFetch();
+      }
+    }, 5000);
     return () => window.clearInterval(intervalId);
-  }, [currentProviderId]);
+  }, [
+    currentProviderFetchState.error,
+    currentProviderFetchState.loading,
+    currentProviderId,
+    currentProviderModelsCount,
+    setProviderModelFetchState,
+    showSettings,
+  ]);
 
   const scrollToBottom = useCallback(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
