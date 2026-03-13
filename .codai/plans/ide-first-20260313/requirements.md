@@ -19,3 +19,4 @@
 ## Progress Notes
 
 - 2026-03-13: Started the IDE-first roadmap by adding a dedicated shared-core scaffold, a desktop Electron + Monaco workbench shell, shell execution envelopes for Windows command parity, and first-pass fixes for provider model fetch loops plus Ollama reachability polling.
+- 2026-03-13: The desktop scaffold is now launchable from built files as well. Renderer assets are emitted with relative paths, so the Electron shell can load the workbench over `file://` instead of failing into a black screen on startup.
