@@ -36,7 +36,7 @@
 ## v0.0.54 Hardening Sprint
 
 - [ ] Add provider contract fixtures for Mistral, Gemini, OpenRouter, Ollama, and custom OpenAI-compatible endpoints
-- [ ] Add session export, import, pin, archive, and search flows
+- [x] Add session export, import, pin, archive, and search flows
 - [ ] Add resume-after-restart smoke tests for long-running tool loops
 - [ ] Add grouped checkpoint rollback and "restore all files from turn"
 - [ ] Audit updater and release delivery reliability end-to-end
@@ -56,3 +56,4 @@
 - 2026-03-13: Completed `v0.0.52` by splitting webview state into `ExtensionStore` and `ChatRuntimeStore`, moving provider/model fetch state into shared reducers, grouping runtime rows in chat, and expanding the trace/context drawers with richer runtime inspection details.
 - 2026-03-13: Completed `v0.0.53` by wiring a real `GoalControlService` into the runtime loop, persisting goal snapshots with sessions, emitting recovery/drift warnings into the trace UI, adding approval previews plus retry policies for risky tools, and supporting workspace-bound read-only external tool aliases through `.codai/external-tools.json`.
 - 2026-03-13: Started the `v0.0.54` hardening slice by fixing concurrent workspace-state writes in `WorkspaceStorage`, making provider model fetching debounce live drafts instead of only saved settings, and polling Ollama model availability so the local provider reflects startup changes without manual refresh loops.
+- 2026-03-13: Completed the session-management hardening slice under `v0.0.54` by adding import/export bundles, pin/archive metadata, archived-aware search/grouping, and regression coverage for session ordering plus round-trip transfer behavior.

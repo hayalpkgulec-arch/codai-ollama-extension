@@ -116,6 +116,10 @@ function AppShell() {
     updateSession,
     deleteSession,
     renameSession,
+    toggleSessionPinned,
+    toggleSessionArchived,
+    exportSession,
+    importSessions,
     loadSession,
     getGroupedSessions,
   } = useHistory();
@@ -486,6 +490,16 @@ function AppShell() {
     !!lastAssistantMessage.error
   );
   const showWorkingIndicator = isProcessing && !isStreaming && !lastAssistantHasVisibleContent;
+  const recentSessions = useMemo(
+    () => [...sessions]
+      .filter((session) => !session.archived)
+      .sort((left, right) => {
+        if (!!left.pinned !== !!right.pinned) return left.pinned ? -1 : 1;
+        return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+      })
+      .slice(0, 3),
+    [sessions],
+  );
 
   return (
     <div className="app">
@@ -517,7 +531,8 @@ function AppShell() {
       {showHistory && (
         <div className="history-overlay">
           <ChatHistoryPanel
-            groups={getGroupedSessions()}
+            sessions={sessions}
+            getGroups={getGroupedSessions}
             activeSessionId={activeSessionId}
             onSelectSession={(id) => {
               loadSession(id);
@@ -537,6 +552,10 @@ function AppShell() {
               }
             }}
             onRenameSession={(id, title) => renameSession(id, title)}
+            onPinSession={(id, pinned) => toggleSessionPinned(id, pinned)}
+            onArchiveSession={(id, archived) => toggleSessionArchived(id, archived)}
+            onExportSession={(id) => exportSession(id)}
+            onImportSessions={() => importSessions()}
             onClose={() => setShowHistory(false)}
           />
         </div>
@@ -769,10 +788,10 @@ function AppShell() {
             <p className="empty-title">How can I help?</p>
             <p className="empty-sub">Ask anything · <span className="empty-mode-hint">{selectedMode.label} mode</span></p>
             {/* Recent sessions on empty state — Kilo style */}
-            {sessions.length > 0 && (
+            {recentSessions.length > 0 && (
               <div className="empty-recent">
                 <span className="empty-recent-label">Recent</span>
-                {sessions.slice(0, 3).map(s => (
+                {recentSessions.map(s => (
                   <button
                     key={s.id}
                     className="empty-recent-item"

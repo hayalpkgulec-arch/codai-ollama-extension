@@ -232,6 +232,9 @@ export interface SessionInfo {
   mode: AgentMode;
   model?: string;
   preview?: string;   // first user message snippet
+  pinned?: boolean;
+  archived?: boolean;
+  archivedAt?: string | null;
 }
 
 // ── Plan Mode — Wizard question ───────────────────────────────────────────────

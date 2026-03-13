@@ -23,6 +23,9 @@ function createStorageStub() {
     const sessionHistories = new Map<string, any>();
     let browserArtifactsIndex: any[] = [];
     return {
+        getWorkspaceHash() {
+            return 'workspace-test';
+        },
         readSessionIndex(fallback: any[]) {
             return sessionIndex.length > 0 ? sessionIndex : fallback;
         },
@@ -43,6 +46,9 @@ function createStorageStub() {
         },
         async writeBrowserArtifactsIndex(value: any[]) {
             browserArtifactsIndex = [...value];
+        },
+        getWrittenIndex() {
+            return [...sessionIndex];
         },
         getWrittenHistory(sessionId: string) {
             return sessionHistories.get(sessionId);
@@ -213,4 +219,143 @@ test('MessageStateStore migrates legacy session payloads and restores meta fallb
     assert.equal(restoredState.mode, 'plan');
     assert.equal(restoredState.model, 'gemini-2.5-pro');
     assert.equal(loaded.messages.length, 1);
+});
+
+test('MessageStateStore pins active sessions first and keeps archived sessions at the end', async () => {
+    const storage = createStorageStub();
+    const globalState = createGlobalState();
+    const store = new MessageStateStore(
+        storage as any,
+        { globalState } as any,
+        {
+            getSessionSnapshot() {
+                return {
+                    conversationHistory: [],
+                    transcriptHistory: [],
+                    mode: 'code',
+                    model: 'qwen3',
+                    planTodos: '',
+                    planSummary: '',
+                    savedAt: '2026-03-13T10:00:00.000Z',
+                };
+            },
+            getPlanSummary() {
+                return '';
+            },
+        } as any,
+        {
+            getCurrentTurnState() {
+                return null;
+            },
+            getLatestSummary() {
+                return null;
+            },
+        } as any,
+        () => null,
+        () => null,
+        () => null,
+        () => [],
+    );
+
+    await store.upsertSessionMeta({
+        id: 'recent-session',
+        title: 'Recent session',
+        createdAt: '2026-03-13T10:00:00.000Z',
+        updatedAt: '2026-03-13T10:10:00.000Z',
+        messageCount: 2,
+        mode: 'code',
+    });
+    await store.upsertSessionMeta({
+        id: 'pinned-session',
+        title: 'Pinned session',
+        createdAt: '2026-03-13T09:00:00.000Z',
+        updatedAt: '2026-03-13T09:10:00.000Z',
+        messageCount: 1,
+        mode: 'chat',
+        pinned: true,
+    });
+    await store.upsertSessionMeta({
+        id: 'archived-session',
+        title: 'Archived session',
+        createdAt: '2026-03-13T08:00:00.000Z',
+        updatedAt: '2026-03-13T08:10:00.000Z',
+        messageCount: 4,
+        mode: 'plan',
+        archived: true,
+        archivedAt: '2026-03-13T08:15:00.000Z',
+    });
+
+    const sessions = await store.getSessions();
+
+    assert.equal(sessions[0].id, 'pinned-session');
+    assert.equal(sessions[1].id, 'recent-session');
+    assert.equal(sessions[2].id, 'archived-session');
+    assert.equal(storage.getWrittenIndex()[0].id, 'pinned-session');
+});
+
+test('MessageStateStore exports bundles and imports them with unique ids', async () => {
+    const storage = createStorageStub();
+    const globalState = createGlobalState();
+    const workspaceManager = {
+        getSessionSnapshot() {
+            return {
+                conversationHistory: [{ role: 'user', content: 'ship it' }],
+                transcriptHistory: [{ role: 'user', content: 'ship it' }],
+                mode: 'code',
+                model: 'qwen3',
+                planTodos: '',
+                planSummary: '',
+                savedAt: '2026-03-13T10:00:00.000Z',
+            };
+        },
+        getPlanSummary() {
+            return '';
+        },
+        restoreSessionState() {
+            return undefined;
+        },
+    };
+    const traceService = {
+        getCurrentTurnState() {
+            return null;
+        },
+        getLatestSummary() {
+            return null;
+        },
+    };
+
+    const store = new MessageStateStore(
+        storage as any,
+        { globalState } as any,
+        workspaceManager as any,
+        traceService as any,
+        () => null,
+        () => null,
+        () => null,
+        () => [],
+    );
+
+    await store.upsertSessionMeta({
+        id: 'session-1',
+        title: 'Build release',
+        createdAt: '2026-03-13T10:00:00.000Z',
+        updatedAt: '2026-03-13T10:10:00.000Z',
+        messageCount: 1,
+        mode: 'code',
+        preview: 'Build the release',
+    });
+    await store.saveSessionHistory('session-1', [{
+        role: 'user',
+        segments: [{ type: 'content', text: 'Build the release and ship it.' }],
+    }]);
+
+    const exported = await store.exportSession('session-1');
+    const imported = await store.importSession(exported);
+
+    assert.ok(exported);
+    assert.equal(exported?.meta.id, 'session-1');
+    assert.equal(exported?.workspaceHash, 'workspace-test');
+    assert.equal(imported.id, 'session-1-2');
+    assert.equal(imported.title, 'Build release');
+    assert.equal(storage.getWrittenHistory(imported.id).messages[0].role, 'user');
 });

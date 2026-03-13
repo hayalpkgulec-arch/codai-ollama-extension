@@ -328,3 +328,25 @@ export interface StoredSessionHistory {
     goalSnapshots: GoalControlState[];
     savedAt: string;
 }
+
+export interface StoredSessionMeta {
+    id: string;
+    title: string;
+    createdAt: string;
+    updatedAt: string;
+    messageCount: number;
+    mode: string;
+    model?: string;
+    preview?: string;
+    pinned?: boolean;
+    archived?: boolean;
+    archivedAt?: string | null;
+}
+
+export interface StoredSessionExport {
+    schemaVersion: number;
+    exportedAt: string;
+    workspaceHash: string;
+    meta: StoredSessionMeta;
+    payload: StoredSessionHistory;
+}

@@ -264,6 +264,72 @@ export class TaskController {
         await this.messageStateStore.saveSessionHistory(sessionId, messages);
     }
 
+    public async setSessionPinned(sessionId: string, pinned: boolean): Promise<any> {
+        return this.messageStateStore.setSessionPinned(sessionId, pinned);
+    }
+
+    public async setSessionArchived(sessionId: string, archived: boolean): Promise<any> {
+        return this.messageStateStore.setSessionArchived(sessionId, archived);
+    }
+
+    public async exportSession(sessionId: string): Promise<{ path: string; session: any } | null> {
+        const bundle = await this.messageStateStore.exportSession(sessionId);
+        if (!bundle) {
+            throw new Error('Session not found.');
+        }
+
+        const suggestedDir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || this.storage.getWorkspaceDir();
+        const filename = `${this.toSafeFilename(bundle.meta.title)}.codai-session.json`;
+        const uri = await vscode.window.showSaveDialog({
+            defaultUri: vscode.Uri.file(path.join(suggestedDir, filename)),
+            filters: {
+                'CodAI Session': ['json'],
+            },
+            saveLabel: 'Export Session',
+        });
+        if (!uri) return null;
+
+        await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(bundle, null, 2), 'utf8'));
+        void vscode.window.showInformationMessage(`CodAI: Exported "${bundle.meta.title}" to ${uri.fsPath}`);
+        return { path: uri.fsPath, session: bundle.meta };
+    }
+
+    public async importSessions(): Promise<any[]> {
+        const uris = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: true,
+            openLabel: 'Import Sessions',
+            filters: {
+                'CodAI Session': ['json'],
+            },
+        });
+        if (!uris || uris.length === 0) return [];
+
+        const importedSessions: any[] = [];
+        const failedFiles: string[] = [];
+
+        for (const uri of uris) {
+            try {
+                const bytes = await vscode.workspace.fs.readFile(uri);
+                const parsed = JSON.parse(Buffer.from(bytes).toString('utf8'));
+                importedSessions.push(await this.messageStateStore.importSession(parsed));
+            } catch (error: any) {
+                failedFiles.push(`${path.basename(uri.fsPath)} (${error?.message || 'unknown error'})`);
+            }
+        }
+
+        if (importedSessions.length > 0) {
+            const label = importedSessions.length === 1 ? 'session' : 'sessions';
+            void vscode.window.showInformationMessage(`CodAI: Imported ${importedSessions.length} ${label}.`);
+        }
+        if (failedFiles.length > 0) {
+            void vscode.window.showWarningMessage(`CodAI: Failed to import ${failedFiles.join(', ')}`);
+        }
+
+        return importedSessions;
+    }
+
     public async loadSession(sessionId: string): Promise<void> {
         if (!this._view) return;
         const loaded = await this.messageStateStore.loadSession(sessionId);
@@ -1018,6 +1084,17 @@ export class TaskController {
         } catch {
             return '';
         }
+    }
+
+    private toSafeFilename(value: string): string {
+        const normalized = value
+            .trim()
+            .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .toLowerCase();
+        return normalized || `session-${Date.now()}`;
     }
 
     public abortCurrentTask() {

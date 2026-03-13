@@ -1,18 +1,38 @@
-/**
- * ChatHistoryPanel
- * Kilo-style session list with date grouping, search, rename & delete.
- */
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, MessageSquare, Trash2, Pencil, Check, X, Clock, Code2, Brain, MessageCircle } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  Brain,
+  Check,
+  Clock,
+  Code2,
+  Download,
+  MessageCircle,
+  MessageSquare,
+  Pencil,
+  Pin,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { SessionInfo, AgentMode } from '../../types';
-import { formatRelativeDate, type DateGroup } from '../../hooks/useHistory';
+import { formatRelativeDate, type SessionGroup } from '../../hooks/useHistory';
 
 interface ChatHistoryPanelProps {
-  groups: Array<{ group: DateGroup; sessions: SessionInfo[] }>;
+  sessions: SessionInfo[];
+  getGroups: (query?: string, options?: { includeArchived?: boolean }) => Array<{
+    group: SessionGroup;
+    sessions: SessionInfo[];
+  }>;
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, title: string) => void;
+  onPinSession: (id: string, pinned: boolean) => void;
+  onArchiveSession: (id: string, archived: boolean) => void;
+  onExportSession: (id: string) => void;
+  onImportSessions: () => void;
   onClose: () => void;
 }
 
@@ -28,24 +48,35 @@ interface SessionItemProps {
   onSelect: () => void;
   onDelete: () => void;
   onRename: (title: string) => void;
+  onPin: () => void;
+  onArchive: () => void;
+  onExport: () => void;
 }
 
-function SessionItem({ session, isActive, onSelect, onDelete, onRename }: SessionItemProps) {
+function SessionItem({
+  session,
+  isActive,
+  onSelect,
+  onDelete,
+  onRename,
+  onPin,
+  onArchive,
+  onExport,
+}: SessionItemProps) {
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(session.title);
   const [showActions, setShowActions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (renaming) {
-      setRenameVal(session.title);
-      setTimeout(() => inputRef.current?.select(), 0);
-    }
+    if (!renaming) return;
+    setRenameVal(session.title);
+    setTimeout(() => inputRef.current?.select(), 0);
   }, [renaming, session.title]);
 
   const commitRename = () => {
-    const val = renameVal.trim();
-    if (val && val !== session.title) onRename(val);
+    const value = renameVal.trim();
+    if (value && value !== session.title) onRename(value);
     setRenaming(false);
   };
 
@@ -54,15 +85,21 @@ function SessionItem({ session, isActive, onSelect, onDelete, onRename }: Sessio
     setRenaming(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-    if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
-    e.stopPropagation();
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitRename();
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelRename();
+    }
+    event.stopPropagation();
   };
 
   return (
     <div
-      className={`history-item${isActive ? ' history-item--active' : ''}`}
+      className={`history-item${isActive ? ' history-item--active' : ''}${session.archived ? ' history-item--archived' : ''}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -72,13 +109,17 @@ function SessionItem({ session, isActive, onSelect, onDelete, onRename }: Sessio
             ref={inputRef}
             className="history-item-rename-input"
             value={renameVal}
-            onChange={e => setRenameVal(e.target.value)}
+            onChange={(event) => setRenameVal(event.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={commitRename}
           />
           <div className="history-item-rename-actions">
-            <button className="history-action-btn" onClick={commitRename} title="Confirm"><Check size={11} /></button>
-            <button className="history-action-btn" onClick={cancelRename} title="Cancel"><X size={11} /></button>
+            <button className="history-action-btn" onClick={commitRename} title="Confirm">
+              <Check size={11} />
+            </button>
+            <button className="history-action-btn" onClick={cancelRename} title="Cancel">
+              <X size={11} />
+            </button>
           </div>
         </div>
       ) : (
@@ -87,7 +128,11 @@ function SessionItem({ session, isActive, onSelect, onDelete, onRename }: Sessio
             <ModeIcon mode={session.mode} />
           </div>
           <div className="history-item-content">
-            <span className="history-item-title">{session.title}</span>
+            <div className="history-item-title-row">
+              <span className="history-item-title">{session.title}</span>
+              {session.pinned && <span className="history-item-badge">Pinned</span>}
+              {session.archived && <span className="history-item-badge history-item-badge--muted">Archived</span>}
+            </div>
             {session.preview && (
               <span className="history-item-preview">{session.preview}</span>
             )}
@@ -105,22 +150,24 @@ function SessionItem({ session, isActive, onSelect, onDelete, onRename }: Sessio
             </div>
           </div>
           {(showActions || isActive) && (
-            <div
-              className="history-item-actions"
-              onClick={e => e.stopPropagation()}
-            >
+            <div className="history-item-actions" onClick={(event) => event.stopPropagation()}>
               <button
-                className="history-action-btn"
-                onClick={() => setRenaming(true)}
-                title="Rename"
+                className={`history-action-btn${session.pinned ? ' history-action-btn--active' : ''}`}
+                onClick={onPin}
+                title={session.pinned ? 'Unpin' : 'Pin'}
               >
+                <Pin size={11} />
+              </button>
+              <button className="history-action-btn" onClick={onExport} title="Export">
+                <Download size={11} />
+              </button>
+              <button className="history-action-btn" onClick={() => setRenaming(true)} title="Rename">
                 <Pencil size={11} />
               </button>
-              <button
-                className="history-action-btn history-action-btn--danger"
-                onClick={onDelete}
-                title="Delete"
-              >
+              <button className="history-action-btn" onClick={onArchive} title={session.archived ? 'Restore' : 'Archive'}>
+                {session.archived ? <ArchiveRestore size={11} /> : <Archive size={11} />}
+              </button>
+              <button className="history-action-btn history-action-btn--danger" onClick={onDelete} title="Delete">
                 <Trash2 size={11} />
               </button>
             </div>
@@ -132,64 +179,71 @@ function SessionItem({ session, isActive, onSelect, onDelete, onRename }: Sessio
 }
 
 export function ChatHistoryPanel({
-  groups,
+  sessions,
+  getGroups,
   activeSessionId,
   onSelectSession,
   onDeleteSession,
   onRenameSession,
+  onPinSession,
+  onArchiveSession,
+  onExportSession,
+  onImportSessions,
   onClose,
 }: ChatHistoryPanelProps) {
   const [query, setQuery] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setTimeout(() => searchRef.current?.focus(), 80);
   }, []);
 
-  // Close on Escape
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value);
+  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(event.target.value);
   }, []);
 
-  // Filter sessions by query if set
-  const displayGroups = query.trim()
-    ? groups.map(g => ({
-        ...g,
-        sessions: g.sessions.filter(s =>
-          s.title.toLowerCase().includes(query.toLowerCase()) ||
-          s.preview?.toLowerCase().includes(query.toLowerCase())
-        ),
-      })).filter(g => g.sessions.length > 0)
-    : groups;
-
-  const totalCount = groups.reduce((acc, g) => acc + g.sessions.length, 0);
+  const displayGroups = getGroups(query, {
+    includeArchived: showArchived || query.trim().length > 0,
+  });
+  const totalCount = sessions.length;
+  const archivedCount = sessions.filter((session) => session.archived).length;
 
   return (
     <div className="history-panel">
-      {/* Header */}
       <div className="history-panel-header">
         <span className="history-panel-title">Chat History</span>
         <span className="history-panel-count">{totalCount}</span>
+        <button
+          className={`history-panel-tool${showArchived ? ' history-panel-tool--active' : ''}`}
+          onClick={() => setShowArchived((value) => !value)}
+          title={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
+        >
+          {showArchived ? <ArchiveRestore size={12} /> : <Archive size={12} />}
+          {archivedCount > 0 && <span>{archivedCount}</span>}
+        </button>
+        <button className="history-panel-tool" onClick={onImportSessions} title="Import sessions">
+          <Upload size={12} />
+        </button>
         <button className="history-panel-close" onClick={onClose} title="Close">
           <X size={13} />
         </button>
       </div>
 
-      {/* Search */}
       <div className="history-search-wrap">
         <Search size={12} className="history-search-icon" />
         <input
           ref={searchRef}
           className="history-search-input"
-          placeholder="Search conversations…"
+          placeholder="Search conversations..."
           value={query}
           onChange={handleSearchChange}
         />
@@ -200,24 +254,29 @@ export function ChatHistoryPanel({
         )}
       </div>
 
-      {/* Session list */}
       <div className="history-list">
         {displayGroups.length === 0 ? (
           <div className="history-empty">
             {query ? 'No matching conversations' : 'No conversations yet'}
           </div>
         ) : (
-          displayGroups.map(({ group, sessions }) => (
+          displayGroups.map(({ group, sessions: groupedSessions }) => (
             <div key={group} className="history-group">
               <div className="history-group-label">{group}</div>
-              {sessions.map(session => (
+              {groupedSessions.map((session) => (
                 <SessionItem
                   key={session.id}
                   session={session}
                   isActive={session.id === activeSessionId}
-                  onSelect={() => { onSelectSession(session.id); onClose(); }}
+                  onSelect={() => {
+                    onSelectSession(session.id);
+                    onClose();
+                  }}
                   onDelete={() => onDeleteSession(session.id)}
-                  onRename={title => onRenameSession(session.id, title)}
+                  onRename={(title) => onRenameSession(session.id, title)}
+                  onPin={() => onPinSession(session.id, !session.pinned)}
+                  onArchive={() => onArchiveSession(session.id, !session.archived)}
+                  onExport={() => onExportSession(session.id)}
                 />
               ))}
             </div>

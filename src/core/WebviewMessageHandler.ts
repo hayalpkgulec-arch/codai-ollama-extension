@@ -333,6 +333,65 @@ export function setupWebviewMessageHandler(webview: vscode.Webview, controller: 
             }
 
             // ── Chat History: session created/updated (from webview) ──────
+            case 'toggleSessionPinned': {
+                if (typeof data.sessionId === 'string') {
+                    try {
+                        const session = await controller.setSessionPinned(data.sessionId, !!data.pinned);
+                        if (session) {
+                            webview.postMessage({ type: 'sessionUpdated', session });
+                        }
+                    } catch (e: any) {
+                        console.error('CodAI: toggleSessionPinned error:', e);
+                    }
+                }
+                break;
+            }
+
+            case 'toggleSessionArchived': {
+                if (typeof data.sessionId === 'string') {
+                    try {
+                        const session = await controller.setSessionArchived(data.sessionId, !!data.archived);
+                        if (session) {
+                            webview.postMessage({ type: 'sessionUpdated', session });
+                        }
+                    } catch (e: any) {
+                        console.error('CodAI: toggleSessionArchived error:', e);
+                    }
+                }
+                break;
+            }
+
+            case 'exportSession': {
+                if (typeof data.sessionId === 'string' && data.sessionId) {
+                    try {
+                        const result = await controller.exportSession(data.sessionId);
+                        if (result) {
+                            webview.postMessage({
+                                type: 'sessionExported',
+                                sessionId: data.sessionId,
+                                path: result.path,
+                            });
+                        }
+                    } catch (e: any) {
+                        console.error('CodAI: exportSession error:', e);
+                    }
+                }
+                break;
+            }
+
+            case 'importSessions': {
+                try {
+                    const imported = await controller.importSessions();
+                    if (imported.length > 0) {
+                        const sessions = await controller.getSessions();
+                        webview.postMessage({ type: 'sessionsList', sessions });
+                    }
+                } catch (e: any) {
+                    console.error('CodAI: importSessions error:', e);
+                }
+                break;
+            }
+
             case 'sessionCreated':
             case 'sessionUpdated': {
                 // Persist session metadata to globalState
